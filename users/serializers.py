@@ -8,3 +8,4 @@ class UserSerializer(ModelSerializer):
         fields = '__all__'
 
 
+

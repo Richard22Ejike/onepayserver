@@ -64,6 +64,60 @@ def getUsers(request):
 
 
 @api_view(['GET'])
+def addUsers(request):
+    data = [
+        {
+            "id": 143,
+            "password": "pbkdf2_sha256$390000$gUKq6vkgVx8pdNEH0XzuOG$JOrPAwSOXLK0gzXF96WaSSRMFBYpt4P8sb0cJQI7iow=",
+            "last_login": "2024-04-08T00:30:33.927046Z",
+            "username": "sgsdgdggsfgdg",  # Set default value here
+            "email": "richard.ekene22@outlook.com",
+            "first_name": "Richard",
+            "last_name": "Ejike",
+            "phone_number": "09055444489",
+            "is_staff": False,
+            "is_superuser": False,
+            "is_active": False,
+            "is_verified": False,
+            "status": False,
+            "customer_id": "661d07649e2f2a169cffd536",
+            "account_id": "661d1dc19e2f2a169cffd64f",
+            "organization_id": "65eedccca40a63e818c6cc59",
+            "customer_type": "Personal",
+            "bvn": "22398644895",
+            "account_number": "8548030507",
+            "escrow_fund": 0.0,
+            "bank_name": "WEMA BANK",
+            "updated": "2024-05-05T10:55:51.988586Z",
+            "created": "2024-04-15T11:48:23.475051Z",
+            "bank_pin": "sgdsfgs",  # Set default value here
+            "balance": 0.0,
+            "street": "sfgdfgsg",  # Set default value here
+            "city": "sgfsdx",  # Set default value here
+            "state": "sgfsgdf",  # Set default value here
+            "country": "dsfsgs",  # Set default value here
+            "postal_code": "sgsgdsff",  # Set default value here
+            "access_token": "gdasdgdf",  # Set default value here
+            "refresh_token": "hvhmfj",  # Set default value here
+            "kyc_tier": 0,
+            "groups": [],
+            "user_permissions": []
+        }
+    ]
+
+    added_users = []
+    for user_data in data:
+        serializer = UserSerializer(data=user_data)
+        if serializer.is_valid():
+            user = serializer.save()
+            added_users.append(user)
+        else:
+            print(serializer.errors)
+
+    return Response({"message": "Users added successfully"})
+
+
+@api_view(['GET'])
 def getUser(request, pk):
     user = User.objects.get(account_number=pk)
     serializer = UserSerializer(user, many=False)

@@ -320,14 +320,17 @@ def CreateEscrow(request, pk):
             customer_id=data['customer_id'],
             escrow_description=data['escrow_description'],
             escrow_name=data['escrow_name'],
-            receiver_name=data['receiver_name'],
+            escrow_Status=data['escrow_Status'],
             receiver_email=data['receiver_email'],
-            receiver_account_number=data['receiver_account_number'],
-            receiver_bank_code=data['receiver_bank_code'],
+            payment_type=data['payment_type'],
+            role=data['role'],
             sender_name=data['sender_name'],
             account_id=data['account_id'],
-            start_time=data['start_time'],
-            end_time=data['end_time'],
+            role_paying=data['role_paying'],
+            estimated_days=data['estimated_days'],
+            milestone=data['milestone'],
+            number_milestone=data['number_milestone'],
+
         )
 
         serializer = EscrowSerializer(escrow, many=False)
