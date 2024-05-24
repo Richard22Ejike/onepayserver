@@ -1,5 +1,6 @@
-from django.urls import path
+from django.urls import path, re_path
 from . import views
+from . import consumer
 
 urlpatterns = [
     path('transaction/make-bill-payment/<str:pk>/', views.makeBillPayment),
@@ -19,7 +20,14 @@ urlpatterns = [
     path('transaction/create-escrow/<str:pk>/', views.CreateEscrow),
     path('transaction/edit-escrow/<str:pk>/', views.EditEscrow),
     path('transaction/get-escrows/<str:pk>/', views.getEscrows),
+    path('transaction/get-user-escrows/<str:pk>/', views.getUserEscrows),
+    path('transaction/update-escrows/<str:pk>/', views.updateEscrows),
+    path('transaction/dispute-escrows/<str:pk>/', views.disputeEscrows),
+    path('transaction/release-escrows-fund/<str:pk>/', views.ReleaseEscrowsFund),
+    path('transaction/make-payment-escrows/<str:pk>/', views.MakePaymentEscrows),
+    path('transaction/get-message/', views.getChats),
     path('transaction/create-payment-link/', views.CreatePaymentLink),
     path('transaction/get-payment-links/<str:pk>/', views.getPaymentLinks),
     path('transaction/edit-payment-link/<str:pk>/', views.EditPaymentLink),
+
 ]

@@ -1,5 +1,7 @@
 from django.db import models
 
+from users.models import User
+
 
 class Transaction(models.Model):
     sender_account_number = models.CharField(max_length=20, default='')  # The recipient's account number
@@ -16,7 +18,6 @@ class Transaction(models.Model):
     receiver_name = models.CharField(default='', max_length=100)
     date_sent = models.DateTimeField(auto_now_add=True)
     credit = models.BooleanField(default=False)
-
 
     REQUIRED_FIELDS = ['sender_account_number', 'receiver_account_number']
 
@@ -113,15 +114,22 @@ class Escrow(models.Model):
     estimated_days = models.CharField(max_length=100, default='')
     number_milestone = models.CharField(max_length=100, default='')
     milestone = models.CharField(max_length=100, default='')
+    reference = models.CharField(max_length=100, default='')
     sender_name = models.CharField(max_length=80, default='')
     receiver_email = models.EmailField(max_length=100, blank=True, default='')
+    receiver_id = models.IntegerField( default=0)
     currency = models.CharField(max_length=10, default='NGN')
     link_url = models.URLField(default='')
+    make_payment = models.BooleanField(default=False)
+    accepted = models.BooleanField(default=False)
+    answered = models.BooleanField(default=False)
     amount = models.IntegerField(default=0)
     transaction_fee = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now=True)
     update_at = models.DateTimeField(auto_now=True)
+    dispute = models.CharField(max_length=80, default='')
     is_disabled = models.BooleanField(default=False)
+
 
     class Meta:
         verbose_name = "Escrow"
@@ -129,3 +137,15 @@ class Escrow(models.Model):
 
     def __str__(self):
         return self.sender_name
+
+
+class ChatMessage(models.Model):
+    escrow_id = models.IntegerField(default=0)
+    sender_by = models.IntegerField(default=0)
+    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['timestamp']

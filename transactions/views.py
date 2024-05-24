@@ -1,19 +1,24 @@
 from datetime import date
-
 import requests
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from transactions.models import Transaction, PayBill, PaymentLink, Card, Notification, Escrow
+from transactions.models import Transaction, PayBill, PaymentLink, Card, Notification, Escrow, ChatMessage
 from transactions.serializers import TransactionSerializer, PayBillSerializer, PaymentLinkSerializer, CardSerializer, \
-    NotificationSerializer, EscrowSerializer
+    NotificationSerializer, EscrowSerializer, ChatSerializer
 from users.keys import secret_key
 from users.models import User
+from users.serializers import UserSerializer
 from users.utils import send_email_to_user
+from django.utils import timezone
+import uuid
+from channels.generic.websocket import WebsocketConsumer
+import json
 
 
+# Bill Payments
 @api_view(['POST'])
 def makeBillPayment(request, pk):
     data = request.data
@@ -62,6 +67,7 @@ def makeBillPayment(request, pk):
             return Response(serializer.data)
 
 
+# Transfers
 @api_view(['POST'])
 def makeInternelTransfer(request, pk):
     data = request.data
@@ -195,30 +201,6 @@ def makeExternalTransfer(request, pk):
         return Response({"error": "Incorrect bank pin."}, status=400)
 
 
-@api_view(['POST'])
-def fundAccountWithCard(request, pk):
-    data = request.data
-
-    # Fetch the user by customer_id (pk)
-    user = get_object_or_404(User, customer_id=pk)
-
-    bill = Transaction.objects.create(
-        receiver_name=user.first_name,
-        amount=data['amount'],
-        credit=True,
-        customer_id=user.customer_id,
-        account_number=user.account_number,
-        narration='Pay with Card',
-        account_id=user.account_id,
-        reference='',
-        bank=user.bank_name,
-    )
-
-    # Serialize the transaction
-    serializer = TransactionSerializer(bill, many=False)
-    return Response(serializer.data)
-
-
 @api_view(['GET'])
 def getTransactions(request, pk):
     transactions = Transaction.objects.filter(customer_id=pk).order_by('-id')
@@ -234,6 +216,7 @@ def findAccountbyId(request, pk):
     return Response(serializer.data)
 
 
+# Notifications
 @api_view(['GET'])
 def getNotifications(request, pk):
     notifications = Notification.objects.filter(account_id=pk)
@@ -251,6 +234,245 @@ def SentNotifications(request):
     )
 
     serializer = NotificationSerializer(notification, many=False)
+    return Response(serializer.data)
+
+
+# Escrows
+@api_view(['GET'])
+def getUserEscrows(request, pk):
+    try:
+        user = User.objects.get(email=pk)  # Assuming email is unique
+        serializer = UserSerializer(user, many=False)
+        return Response(serializer.data)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+def CreateEscrow(request, pk):
+    data = request.data
+    print(data['customer_id'])
+
+    # Fetch the user by customer_id (pk)
+    user = get_object_or_404(User, customer_id=pk)
+
+    # Check if the bank_pin matches
+    if data.get('pin') != user.bank_pin:
+        return Response({"error": "Incorrect bank pin."}, status=400)
+
+    # Check if role equals role_paying and if user has enough escrow_fund
+    if data['role'] == data['role_paying']:
+        escrow_amount = data.get('escrow_amount')  # Assume escrow_amount is part of the request data
+        if user.balance < escrow_amount:
+            return Response({"error": "Insufficient balance."}, status=400)
+
+        # Deduct the escrow amount from user's escrow fund
+        user.balance -= escrow_amount
+        user.save()
+
+    # Generate a unique reference number using a combination of timestamp and UUID
+    reference = f"{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+    # Create the escrow
+    escrow = Escrow.objects.create(
+        customer_id=data['customer_id'],
+        escrow_description=data['escrow_description'],
+        escrow_name=data['escrow_name'],
+        escrow_Status=data['escrow_Status'],
+        receiver_email=data['receiver_email'],
+        payment_type=data['payment_type'],
+        role=data['role'],
+        sender_name=data['sender_name'],
+        account_id=data['account_id'],
+        role_paying=data['role_paying'],
+        estimated_days=data['estimated_days'],
+        milestone=data['milestone'],
+        number_milestone=data['number_milestone'],
+        receiver_id=data['receiver_id'],
+        reference=reference  # Assign the generated reference number
+    )
+
+    serializer = EscrowSerializer(escrow, many=False)
+    return Response(serializer.data)
+
+@api_view(['PUT'])
+def EditEscrow(request, pk):
+    try:
+        escrow = Escrow.objects.get(id=pk)
+    except Escrow.DoesNotExist:
+        return Response({'error': 'Escrow not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = EscrowSerializer(instance=escrow, data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+def EmailEscrow(request, pk):
+    try:
+        escrow = Escrow.objects.get(id=pk)
+    except Escrow.DoesNotExist:
+        return Response({'error': 'Escrow not found'}, status=status.HTTP_404_NOT_FOUND)
+    send_email_to_user(escrow.receiver_email, '')
+    serializer = EscrowSerializer(instance=escrow, data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+def getEscrows(request, pk):
+    # Fetch the user's email based on the customer_id (pk)
+    user = get_object_or_404(User, customer_id=pk)
+    user_email = user.email
+
+    # Filter escrows by customer_id
+    escrows_by_customer_id = Escrow.objects.filter(customer_id=pk)
+
+    # Filter escrows where receiver_email matches the user's email
+    escrows_by_receiver_email = Escrow.objects.filter(receiver_email=user_email)
+
+    # Combine both querysets
+    combined_escrows = escrows_by_customer_id | escrows_by_receiver_email
+
+    # Remove duplicates if any
+    combined_escrows = combined_escrows.distinct()
+
+    # Serialize the combined escrows
+    serializer = EscrowSerializer(combined_escrows, many=True)
+
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+def updateEscrows(request, pk):
+    escrow = Escrow.objects.get(id=pk)
+    data = request.data
+    if data.get('escrow_status') == 'Accept Request':
+        escrow.escrow_Status = 'Accept Request'
+        escrow.accepted = True
+        escrow.answered = True
+    if data.get('escrow_status') == 'Reject Request':
+        escrow.escrow_Status = 'Reject Request'
+        escrow.accepted = False
+        escrow.answered = True
+
+    if data.get('escrow_status') == 'Cancel Request':
+        escrow.escrow_Status = 'Cancel Request'
+        escrow.accepted = False
+        escrow.answered = True
+
+    if data.get('escrow_status') == 'Completed':
+        escrow.escrow_Status = 'Completed'
+        escrow.accepted = True
+        escrow.answered = True
+
+    escrow.save()
+    serializer = EscrowSerializer(escrow, many=False)
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+def disputeEscrows(request, pk):
+    escrow = Escrow.objects.get(id=pk)
+    data = request.data
+    escrow.dispute = data.get('dispute')  # Add the dispute information here
+    escrow.save()
+    serializer = EscrowSerializer(escrow, many=False)
+    return Response(serializer.data)
+
+
+@api_view(['PUT'])
+def ReleaseEscrowsFund(request, pk):
+    # Fetch the escrow by customer_id
+    escrow = get_object_or_404(Escrow, customer_id=pk)
+    # Fetch the user by customer_id
+    user = get_object_or_404(User, customer_id=pk)
+    # Fetch the receiver by receiver_email
+    receiver = get_object_or_404(User, email=escrow.receiver_email)
+
+    data = {
+        'amount': escrow.amount,
+        'to_account_id': receiver.account_id,
+        'narration': 'Escrow Release',
+        'from_account_id': user.account_id,
+        'reference': escrow.reference
+    }
+
+    url = "https://api.blochq.io/v1/transfers/internal"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {secret_key}"  # make sure secret_key is defined somewhere
+    }
+    payload = {
+        "amount": data['amount'],
+        "to_account_id": data['to_account_id'],
+        "narration": data['narration'],
+        "from_account_id": data['from_account_id'],
+        "reference": data['reference'],
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        # If the request was not successful, return an error response
+        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    if response.status_code == 200:
+        # Create a transaction record
+        bill = Transaction.objects.create(
+            receiver_name=receiver.name,
+            amount=data['amount'],
+            bank_code='',  # add appropriate bank code
+            account_number=receiver.account_id,
+            narration=data['narration'],
+            account_id=user.account_id,
+            bank=user.bank_name,  # add appropriate bank name
+            credit=True,  # set as credit transaction
+            customer_id=user.customer_id
+        )
+
+        # Update the escrow status to 'Completed'
+        escrow.escrow_Status = 'Completed'
+        escrow.save()
+
+        # Serialize and return the updated escrow object
+        serializer = EscrowSerializer(escrow, many=False)
+        return Response(serializer.data)
+
+    return Response({"error": "Unknown error occurred."}, status=500)
+
+
+@api_view(['PUT'])
+def MakePaymentEscrows(request, pk):
+    escrow = Escrow.objects.get(customer_id=pk)
+    user = User.objects.get(customer_id=pk)  # Assuming you have a User model
+    if user.balance >= escrow.amount:
+        user.balance -= escrow.amount
+        user.escrow_fund += escrow.amount
+        user.save()
+    serializer = EscrowSerializer(escrow, many=False)
+    return Response(serializer.data)
+
+
+# Cards
+@api_view(['POST'])
+def SaveCard(request):
+    data = request.data
+    card = Card.objects.create(
+        customer_id=data['customer_id'],
+        card_number=data['card_number'],
+        account_id=data['account_id'],
+        cvv=data['cvv'],
+        expiry_month=data['expiry_month'],
+        expiry_year=data['expiry_year'],
+        pin=data['pin'],
+    )
+
+    serializer = CardSerializer(card, many=False)
     return Response(serializer.data)
 
 
@@ -304,92 +526,6 @@ def getCards2(request, pk):
 
     cards = Card.objects.filter(customer_id=pk)
     serializer = CardSerializer(cards, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['POST'])
-def CreateEscrow(request, pk):
-    data = request.data
-    print(data['customer_id'])
-
-    # Fetch the user by customer_id (pk)
-    user = get_object_or_404(User, customer_id=pk)
-    # Check if the bank_pin matches
-    if data.get('pin') == user.bank_pin:
-        escrow = Escrow.objects.create(
-            customer_id=data['customer_id'],
-            escrow_description=data['escrow_description'],
-            escrow_name=data['escrow_name'],
-            escrow_Status=data['escrow_Status'],
-            receiver_email=data['receiver_email'],
-            payment_type=data['payment_type'],
-            role=data['role'],
-            sender_name=data['sender_name'],
-            account_id=data['account_id'],
-            role_paying=data['role_paying'],
-            estimated_days=data['estimated_days'],
-            milestone=data['milestone'],
-            number_milestone=data['number_milestone'],
-
-        )
-
-        serializer = EscrowSerializer(escrow, many=False)
-        return Response(serializer.data)
-    else:
-        return Response({"error": "Incorrect bank pin."}, status=400)
-
-
-@api_view(['PUT'])
-def EditEscrow(request, pk):
-    try:
-        escrow = Escrow.objects.get(id=pk)
-    except Escrow.DoesNotExist:
-        return Response({'error': 'Escrow not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = EscrowSerializer(instance=escrow, data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT'])
-def EmailEscrow(request, pk):
-    try:
-        escrow = Escrow.objects.get(id=pk)
-    except Escrow.DoesNotExist:
-        return Response({'error': 'Escrow not found'}, status=status.HTTP_404_NOT_FOUND)
-    send_email_to_user(escrow.receiver_email, '')
-    serializer = EscrowSerializer(instance=escrow, data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-@api_view(['GET'])
-def getEscrows(request, pk):
-    escrows = Escrow.objects.filter(customer_id=pk)
-    serializer = EscrowSerializer(escrows, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['POST'])
-def SaveCard(request):
-    data = request.data
-    card = Card.objects.create(
-        customer_id=data['customer_id'],
-        card_number=data['card_number'],
-        account_id=data['account_id'],
-        cvv=data['cvv'],
-        expiry_month=data['expiry_month'],
-        expiry_year=data['expiry_year'],
-        pin=data['pin'],
-    )
-
-    serializer = CardSerializer(card, many=False)
     return Response(serializer.data)
 
 
@@ -469,6 +605,30 @@ def ChangePin(request, pk):
     return Response(serializer.data)
 
 
+@api_view(['POST'])
+def fundAccountWithCard(request, pk):
+    data = request.data
+
+    # Fetch the user by customer_id (pk)
+    user = get_object_or_404(User, customer_id=pk)
+
+    bill = Transaction.objects.create(
+        receiver_name=user.first_name,
+        amount=data['amount'],
+        credit=True,
+        customer_id=user.customer_id,
+        account_number=user.account_number,
+        narration='Pay with Card',
+        account_id=user.account_id,
+        reference='',
+        bank=user.bank_name,
+    )
+
+    # Serialize the transaction
+    serializer = TransactionSerializer(bill, many=False)
+    return Response(serializer.data)
+
+
 @api_view(['GET'])
 def getCardDetails(request, pk):
     card = Card.objects.get(customer_id=pk)
@@ -540,6 +700,7 @@ def WithDrawCard(request, pk):
     return Response(serializer.data)
 
 
+# PAYMENTLINK
 @api_view(['GET'])
 def getPaymentLinks(request, pk):
     paymentLinks = PaymentLink.objects.filter(customer_id=pk)
@@ -603,5 +764,21 @@ def EditPaymentLink(request, pk):
         serializer.save()
 
     return Response(serializer.data)
+
+
+# CHAT
+
+@api_view(['GET'])
+def getChats(request, pk):
+    messages = ChatMessage.objects.filter(escrow_id=pk)
+    serializer = ChatSerializer(messages, many=True)
+    return Response(serializer.data)
+
+# @api_view(['GET'])
+# def getChats(request):
+#     messages = ChatMessage.objects.all()  # Fetch all chat messages
+#     serializer = ChatSerializer(messages, many=True)
+#     return Response(serializer.data)
+
 
 # Create your views here.

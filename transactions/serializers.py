@@ -1,6 +1,6 @@
 from rest_framework.serializers import ModelSerializer
 
-from transactions.models import Transaction, PayBill, Card, PaymentLink, Notification, Escrow
+from transactions.models import Transaction, PayBill, Card, PaymentLink, Notification, Escrow, ChatMessage
 
 
 class TransactionSerializer(ModelSerializer):
@@ -36,4 +36,10 @@ class PaymentLinkSerializer(ModelSerializer):
 class NotificationSerializer(ModelSerializer):
     class Meta:
         model = Notification
+        fields = '__all__'
+
+
+class ChatSerializer(ModelSerializer):
+    class Meta:
+        model = ChatMessage
         fields = '__all__'

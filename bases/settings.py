@@ -31,6 +31,7 @@ ALLOWED_HOSTS = ['*', '127.0.0.1', '192.168.43.158']
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -41,6 +42,7 @@ INSTALLED_APPS = [
     'transactions.apps.TransactionsConfig',
     'rest_framework',
     'rest_framework.authtoken',
+    'channels',
     'corsheaders',
 ]
 
@@ -76,6 +78,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'bases.wsgi.application'
 
+ASGI_APPLICATION = 'bases.asgi.application'
+
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 

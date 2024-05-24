@@ -284,6 +284,8 @@ def SignInUser(request):
             user.account_id = account_response_data.get('data', [{}])[0].get('id', '')
             user.account_number = account_response_data.get('data', [{}])[0].get('account_number', '')
             user.bank_name = account_response_data.get('data', [{}])[0].get('bank_name', '')
+            user.balance = account_response_data.get('data', [{}])[0].get('balance', '')
+            user.kyc_tier = account_response_data.get('data', [{}])[0].get('kyc_tier', '')
             user.group = user_data.get('group', '')
             user.customer_id = user_data.get('id', '')
             user.organization_id = user_data.get('organization_id', '')
