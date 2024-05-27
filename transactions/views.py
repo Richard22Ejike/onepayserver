@@ -282,6 +282,7 @@ def CreateEscrow(request, pk):
         receiver_email=data['receiver_email'],
         payment_type=data['payment_type'],
         role=data['role'],
+        amount=data['amount'],
         sender_name=data['sender_name'],
         account_id=data['account_id'],
         role_paying=data['role_paying'],
