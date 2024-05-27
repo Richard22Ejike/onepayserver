@@ -364,6 +364,7 @@ def updateEscrows(request, pk):
         escrow.escrow_Status = 'Cancel Request'
         escrow.accepted = False
         escrow.answered = True
+        escrow.is_disabled = True
 
     if data.get('escrow_status') == 'Completed':
         escrow.escrow_Status = 'Completed'
@@ -448,12 +449,31 @@ def ReleaseEscrowsFund(request, pk):
 
 @api_view(['PUT'])
 def MakePaymentEscrows(request, pk):
-    escrow = Escrow.objects.get(customer_id=pk)
-    user = User.objects.get(customer_id=pk)  # Assuming you have a User model
+    escrow_id = request.data.get('escrow_id')
+    if not escrow_id:
+        return Response({"error": "escrow_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        escrow = Escrow.objects.get(customer_id=pk, id=escrow_id)
+    except Escrow.DoesNotExist:
+        return Response({"error": "Escrow not found"}, status=status.HTTP_404_NOT_FOUND)
+    except Escrow.MultipleObjectsReturned:
+        return Response({"error": "Multiple escrows found for this user with the given ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(customer_id=pk)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
     if user.balance >= escrow.amount:
         user.balance -= escrow.amount
         user.escrow_fund += escrow.amount
         user.save()
+        escrow.make_payment = True
+        escrow.save()
+    else:
+        return Response({"error": "Insufficient balance"}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = EscrowSerializer(escrow, many=False)
     return Response(serializer.data)
 

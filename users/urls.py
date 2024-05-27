@@ -3,7 +3,7 @@ from . import views
 
 urlpatterns = [
     path('', views.getroutes),
-    path('users/', views.addUsers),
+    path('users/', views.getUsers),
     path('users/signup/', views.createUser),
     path('users/signin/', views.SignInUser),
     path('users/forgetpassword/', views.forgetpassword),  # Added for forget password
