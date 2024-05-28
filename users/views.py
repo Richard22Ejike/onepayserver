@@ -320,20 +320,12 @@ def SignInUser(request):
 
     response = requests.put(url, json=payload, headers=headers)
     if response.status_code != 200:
-        print('not sign in ')
-        print(response.content)
-        print(response.status_code)
-        print(response.encoding)
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if response.status_code == 200:
-        print(' sign in ')
-        print(response.content)
-        print(response.status_code)
-        print(response.encoding)
         response_data = response.json()
         user_data = response_data.get('data')
-        account_url = "https://api.blochq.io/v1/accounts"
+        account_url = f"https://api.blochq.io/v1/accounts/customers/accounts/{user_data.get('customer_id', '')}"
         account_payload = {"accountID": "661d1dc19e2f2a169cffd64f"}
         account_headers = {
             "accept": "application/json",
@@ -342,24 +334,16 @@ def SignInUser(request):
         }
         account_response = requests.get(account_url, json=account_payload, headers=account_headers)
         if account_response.status_code != 200:
-            print('not sign in ')
-            print(account_response.content)
-            print(account_response.status_code)
-            print(account_response.encoding)
             return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         if account_response.status_code == 200:
             account_response_data = account_response.json()
-            print(' sign in ')
-            print(account_response.content)
-            print(account_response.status_code)
-            print(account_response.encoding)
-            print(account_response_data)
-            print(account_response_data.get('data', [{}])[0].get('account_number', ''))
-            user.account_id = account_response_data.get('data', [{}])[0].get('id', '')
-            user.account_number = account_response_data.get('data', [{}])[0].get('account_number', '')
-            user.bank_name = account_response_data.get('data', [{}])[0].get('bank_name', '')
-            user.balance = account_response_data.get('data', [{}])[0].get('balance', '')
-            user.kyc_tier = account_response_data.get('data', [{}])[0].get('kyc_tier', '')
+            print(account_response_data.get('balance', ''))
+            print(account_response_data.get('account_number', ''))
+            user.account_id = account_response_data.get('id', '')
+            user.account_number = account_response_data.get('account_number', '')
+            user.bank_name = account_response_data.get('bank_name', '')
+            user.balance = account_response_data.get('balance', '')
+            user.kyc_tier = account_response_data.get('kyc_tier', '')
             user.group = user_data.get('group', '')
             user.customer_id = user_data.get('id', '')
             user.organization_id = user_data.get('organization_id', '')
