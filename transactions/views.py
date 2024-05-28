@@ -803,3 +803,172 @@ def getChats(request, pk):
 
 
 # Create your views here.
+
+# {
+#   "success": true,
+#   "data": [
+#     {
+#       "id": "6653370cba54547d22bf2c29",
+#       "full_name": "steve john",
+#       "phone_number": "09054454476",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "john@mail.com",
+#       "country": "",
+#       "group": "main",
+#       "status": "active",
+#       "created_at": "2024-05-26T13:20:12.65Z",
+#       "updated_at": "0001-01-01T00:00:00Z",
+#       "first_name": "john",
+#       "last_name": "steve",
+#       "kyc_tier": "0",
+#       "bvn": "2222222227",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "6651fc31ba54547d22bf27b6",
+#       "full_name": "steve john",
+#       "phone_number": "09054454479",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "john@mail",
+#       "country": "",
+#       "group": "main",
+#       "status": "active",
+#       "created_at": "2024-05-25T14:56:49.522Z",
+#       "updated_at": "0001-01-01T00:00:00Z",
+#       "first_name": "john",
+#       "last_name": "steve",
+#       "kyc_tier": "0",
+#       "bvn": "2222222222",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "6651f700ba54547d22bf278c",
+#       "full_name": "john john",
+#       "phone_number": "09044558783",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "like.moles@mail.com",
+#       "country": "",
+#       "group": "main",
+#       "status": "active",
+#       "created_at": "2024-05-25T14:34:40.247Z",
+#       "updated_at": "0001-01-01T00:00:00Z",
+#       "first_name": "john",
+#       "last_name": "john",
+#       "kyc_tier": "0",
+#       "bvn": "2234566789",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "662ce825b5965fa7cb39bd36",
+#       "full_name": "Richard Ejike",
+#       "phone_number": "",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "richard.ekene@aun.edu.ng",
+#       "country": "",
+#       "group": "main",
+#       "status": "active",
+#       "created_at": "2024-04-27T11:57:25.196Z",
+#       "updated_at": "0001-01-01T00:00:00Z",
+#       "first_name": "Richard",
+#       "last_name": "Ejike",
+#       "kyc_tier": "0",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "661d0ed69e2f2a169cffd588",
+#       "full_name": "Ejike Richard",
+#       "phone_number": "09055444429",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "richard.ekene22@outlok.com",
+#       "country": "",
+#       "group": "main",
+#       "status": "archived",
+#       "created_at": "2024-04-15T11:26:14.539Z",
+#       "updated_at": "2024-04-15T11:27:30.45Z",
+#       "first_name": "Richard",
+#       "last_name": "Ejike",
+#       "kyc_tier": "0",
+#       "bvn": "22398644891",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "661d07649e2f2a169cffd536",
+#       "full_name": "Ejike Richard",
+#       "phone_number": "09055444489",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "richard.ekene22@outlook.com",
+#       "country": "",
+#       "group": "main",
+#       "status": "active",
+#       "created_at": "2024-04-15T10:54:28.75Z",
+#       "updated_at": "2024-05-27T22:27:12.642Z",
+#       "first_name": "Richard",
+#       "last_name": "Ejike",
+#       "kyc_tier": "0",
+#       "bvn": "22398644895",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     },
+#     {
+#       "id": "661d02c19e2f2a169cffd465",
+#       "full_name": "Ejike Richard",
+#       "phone_number": "09066774466",
+#       "organization_id": "65eedccca40a63e818c6cc59",
+#       "environment": "live",
+#       "email": "richard.eke@outlook.com",
+#       "country": "",
+#       "group": "main",
+#       "status": "archived",
+#       "created_at": "2024-04-15T10:34:41.863Z",
+#       "updated_at": "2024-04-15T11:27:43.98Z",
+#       "first_name": "Richa",
+#       "last_name": "Eji",
+#       "kyc_tier": "0",
+#       "bvn": "46767575787",
+#       "date_of_birth": "0001-01-01T00:00:00Z",
+#       "customer_type": "Personal",
+#       "source": "Banking",
+#       "address": {
+#         "street": ""
+#       }
+#     }
+#   ],
+#   "message": "get customers",
+#   "metadata": {
+#     "has_next": false,
+#     "has_previous": false
+#   }
+# }

@@ -128,18 +128,18 @@ def getUser(request, pk):
 def createUser(request):
     try:
         data = request.data
-        # Your existing code for creating a new user in Django
+        secret_key = "sk_live_65eedccca40a63e818c6cc5a65eedccca40a63e818c6cc5b"
+
+        # Check if the user already exists locally
         existing_user = User.objects.filter(
             Q(phone_number=data['phone_number']) | Q(email=data['email']) | Q(bvn=data['bvn'])
         ).first()
 
-        # If user already exists, return an error response
         if existing_user:
             return Response({'error': 'User with the provided phone number, email, or BVN already exists.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        # Make a request to the third-party API to register the customer
-        # If the request was successful, continue with creating the user in Django
 
+        # Make a request to the Blochq API to register the customer
         url = "https://api.blochq.io/v1/customers"
         payload = {
             "email": data['email'],
@@ -152,34 +152,47 @@ def createUser(request):
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"  # Replace with your actual secret key
+            "authorization": f"Bearer {secret_key}"
         }
-        response = requests.post(url, json=payload, headers=headers)  # Corrected typo here
-        # Check if the request was successful
-        if response.status_code != 200:
-            # If the request was not successful, return an error response
-            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if response.status_code == 200:
-            response_data = response.json()
-            user_data = response_data.get('data')
-            account_url = "https://api.blochq.io/v1/accounts"
-            account_payload = {
-                "customer_id": user_data.get('id', ''),
-                "preferred_bank": "Wema",
-            }
-            account_headers = {
-                "accept": "application/json",
-                "content-type": "application/json",
-                "authorization": f"Bearer {secret_key}"  # Replace with your actual secret key
-            }
-            account_response = requests.post(account_url, json=account_payload, headers=account_headers)
-            if account_response.status_code != 200:
-                return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            if account_response.status_code == 200:
+        response = requests.post(url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            error_message = response.json().get('message')
+            if error_message in [
+                'customer phone number already exist',
+                'customer bvn already exist',
+                'customer email already exist'
+            ]:
+                # If the customer already exists in Blochq, retrieve all customers
+                customer_url = "https://api.blochq.io/v1/customers"
+                customer_response = requests.get(customer_url, headers=headers)
+
+                if customer_response.status_code != 200:
+                    return Response({'error': customer_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                customers_data = customer_response.json().get('data')
+                # Filter the customer based on provided data
+                customer_data = next((customer for customer in customers_data if
+                                      customer['phone_number'] == data['phone_number'] or customer['email'] == data[
+                                          'email'] or customer['bvn'] == data['bvn']), None)
+
+                if not customer_data:
+                    return Response({'error': 'Customer exists in Blochq but could not be found.'},
+                                    status=status.HTTP_404_NOT_FOUND)
+
+                # Retrieve account details
+                account_url = f"https://api.blochq.io/v1/accounts?customer_id={customer_data['id']}"
+                account_response = requests.get(account_url, headers=headers)
                 account_response_data = account_response.json()
-                user_account_data = account_response_data.get('data')
-                print(user_account_data)
+
+                if not account_response_data['data']:
+                    return Response({'error': 'Customer exists but no account found.'},
+                                    status=status.HTTP_404_NOT_FOUND)
+
+                user_account_data = account_response_data['data'][0]
+
+                # Create the user locally
                 user = User.objects.create_user(
                     first_name=data['first_name'],
                     last_name=data['last_name'],
@@ -188,35 +201,96 @@ def createUser(request):
                     email=data['email'],
                     customer_type=data['customer_type'],
                     bvn=data['bvn'],
-                    group=user_data.get('group', ''),
-                    organization_id=user_data.get('organization_id', ''),
-                    customer_id=user_data.get('id', ''),
-                    account_id=account_response_data.get('id', ''),
-                    account_number=account_response_data.get('account_number', ''),
-                    bank_name=account_response_data.get('bank_name', '')
+                    organization_id=customer_data.get('organization_id', ''),
+                    customer_id=customer_data.get('id', ''),
+                    account_id=user_account_data.get('id', ''),
+                    account_number=user_account_data.get('account_number', ''),
+                    bank_name=user_account_data.get('bank_name', '')
                 )
+
                 # Generate or get existing token for the user
-                token = Token.objects.create(user=user)
+                token, created = Token.objects.get_or_create(user=user)
+
                 user_tokens = user.tokens()
                 user.access_token = str(user_tokens.get('access'))
                 user.refresh_token = str(user_tokens.get('refresh'))
 
                 serializer = UserSerializer(user, many=False)
-                return Response({'user': serializer.data,
-                                 'token': token.key,
-                                 'access_token': str(user_tokens.get('access')),
-                                 'refresh_token': str(user_tokens.get('refresh'))
-                                 })
+                return Response({
+                    'user': serializer.data,
+                    'token': token.key,
+                    'access_token': str(user_tokens.get('access')),
+                    'refresh_token': str(user_tokens.get('refresh'))
+                })
+
+            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response_data = response.json()
+        user_data = response_data.get('data')
+
+        # Check if the user has an account in Blochq
+        account_url = f"https://api.blochq.io/v1/accounts?customer_id={user_data['id']}"
+        account_response = requests.get(account_url, headers=headers)
+        account_response_data = account_response.json()
+
+        if not account_response_data['data']:
+            # Create an account if not exists
+            account_payload = {
+                "customer_id": user_data['id'],
+                "alias": "business",
+                "collection_rules": {
+                    "amount": 30000,
+                    "frequency": 2
+                }
+            }
+
+            account_response = requests.post(account_url, json=account_payload, headers=headers)
+            if account_response.status_code != 200:
+                return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            account_response_data = account_response.json()
+            user_account_data = account_response_data.get('data')
+
+        else:
+            user_account_data = account_response_data['data'][0]
+
+        # Create the user locally
+        user = User.objects.create_user(
+            first_name=data['first_name'],
+            last_name=data['last_name'],
+            phone_number=data['phone_number'],
+            password=data['password'],
+            email=data['email'],
+            customer_type=data['customer_type'],
+            bvn=data['bvn'],
+            organization_id=user_data.get('organization_id', ''),
+            customer_id=user_data.get('id', ''),
+            account_id=user_account_data.get('id', ''),
+            account_number=user_account_data.get('account_number', ''),
+            bank_name=user_account_data.get('bank_name', '')
+        )
+
+        # Generate or get existing token for the user
+        token, created = Token.objects.get_or_create(user=user)
+
+        user_tokens = user.tokens()
+        user.access_token = str(user_tokens.get('access'))
+        user.refresh_token = str(user_tokens.get('refresh'))
+
+        serializer = UserSerializer(user, many=False)
+        return Response({
+            'user': serializer.data,
+            'token': token.key,
+            'access_token': str(user_tokens.get('access')),
+            'refresh_token': str(user_tokens.get('refresh'))
+        })
 
     except KeyError as e:
-        # Handle missing data fields in the request
         error_message = f"Missing required field: {str(e)}"
         return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
     except IntegrityError as e:
-        # Handle integrity errors (e.g., unique constraint violation)
-        error_message = str(e)  # Convert the error message to a string
-        # Extract relevant information from the error message
+        error_message = str(e)
         if 'phone_number' in error_message:
             return Response({'error': "Phone number already exists."}, status=status.HTTP_400_BAD_REQUEST)
         elif 'email' in error_message:
@@ -225,7 +299,7 @@ def createUser(request):
             return Response({'error': "BVN already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
-        error_message = str(e)  # Convert the error message to a string
+        error_message = str(e)
         return Response({'error': error_message}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
