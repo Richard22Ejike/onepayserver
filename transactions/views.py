@@ -38,6 +38,13 @@ def makeBillPayment(request, pk):
                 "beneficiary_msisdn": data['beneficiary_msisdn'],
             }
         }
+        print(data['amount'])
+        print(data['product_id'])
+        print(data['operator_id'])
+        print(data['account_id'])
+        print(data['meter_type'])
+        print(data['device_number'])
+        print(data['beneficiary_msisdn'])
 
         url = f"https://api.blochq.io/v1/bills/payment?bill={data['bill_type']}"
 
@@ -48,8 +55,10 @@ def makeBillPayment(request, pk):
         }
 
         response = requests.post(url, headers=headers, json=payload)
+        print(response)
         if response.status_code != 200:
             # If the request was not successful, return an error response
+            print(response.text)
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         if response.status_code == 200:
             bill = PayBill.objects.create(

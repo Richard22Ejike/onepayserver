@@ -21,4 +21,5 @@ urlpatterns = [
     path('users/<str:pk>/updateKYC2/', views.updateUserToKYC2),  # Added for updating KYC step 2
     path('users/<str:pk>/updateKYC2v2/', views.updateUserToKYC2v2),
     path('users/<str:pk>/updateKYC3/', views.updateUserToKYC3),  # Added for updating KYC step 3
+    path('api/core/guest/webhook/', views.webhook_listener, name='webhook_listener'),
 ]

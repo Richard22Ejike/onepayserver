@@ -3,6 +3,7 @@ from datetime import timedelta
 import requests
 from django.db.models import Q
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -10,8 +11,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import IntegrityError
 from django.contrib.auth import authenticate
-
-from .keys import secret_key
+import json
+import hmac
+import hashlib
+from .keys import secret_key, WEBHOOK_SECRET_KEY
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp
@@ -309,6 +312,7 @@ def SignInUser(request):
     phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
     password = data.get('password')
     user = User.objects.get(phone_number=phone_number)
+    print(user.customer_id)
     url = f"https://api.blochq.io/v1/customers/{user.customer_id}"
 
     payload = {"email": user.email}
@@ -325,7 +329,9 @@ def SignInUser(request):
     if response.status_code == 200:
         response_data = response.json()
         user_data = response_data.get('data')
-        account_url = f"https://api.blochq.io/v1/accounts/customers/accounts/{user_data.get('customer_id', '')}"
+        print(response_data.get('data'))
+        print(user_data.get('customer_id', ''))
+        account_url = f"https://api.blochq.io/v1/accounts/customers/accounts/{user_data.get('id', '')}"
         account_payload = {"accountID": "661d1dc19e2f2a169cffd64f"}
         account_headers = {
             "accept": "application/json",
@@ -337,13 +343,14 @@ def SignInUser(request):
             return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         if account_response.status_code == 200:
             account_response_data = account_response.json()
-            print(account_response_data.get('balance', ''))
-            print(account_response_data.get('account_number', ''))
-            user.account_id = account_response_data.get('id', '')
-            user.account_number = account_response_data.get('account_number', '')
-            user.bank_name = account_response_data.get('bank_name', '')
-            user.balance = account_response_data.get('balance', '')
-            user.kyc_tier = account_response_data.get('kyc_tier', '')
+            print(account_response_data.get('data', [{}])[0].get('balance', ''))
+            print(account_response_data.get('data', [{}])[0].get('account_number', ''))
+            print(account_response_data.get('data', [{}])[0].get('id', ''))
+            user.account_id = account_response_data.get('data', [{}])[0].get('id', '')
+            user.account_number = account_response_data.get('data', [{}])[0].get('account_number', '')
+            user.bank_name = account_response_data.get('data', [{}])[0].get('bank_name', '')
+            user.balance = account_response_data.get('data', [{}])[0].get('balance', '')
+            user.kyc_tier = account_response_data.get('data', [{}])[0].get('kyc_tier', '')
             user.group = user_data.get('group', '')
             user.customer_id = user_data.get('id', '')
             user.organization_id = user_data.get('organization_id', '')
@@ -361,6 +368,7 @@ def SignInUser(request):
         user.refresh_token = str(user_tokens.get('refresh'))
 
         serializer = UserSerializer(user, many=False)
+        print(serializer.data)
         return Response({'user': serializer.data,
                          })
 
@@ -689,3 +697,52 @@ def SetPin(request, pk):
 
     print(serializer.data)
     return Response(serializer.data)
+
+
+@csrf_exempt
+@api_view(['POST'])
+def webhook_listener(request):
+    # Retrieve the X-Bloc-Webhook signature from the request headers
+    signature = request.headers.get('X-Bloc-Webhook')
+
+    # Compute the expected signature using your webhook secret and the request body
+    expected_signature = hmac.new(WEBHOOK_SECRET_KEY.encode('utf-8'), request.body, hashlib.sha256).hexdigest()
+
+    # Compare the computed signature with the provided signature
+    if signature != expected_signature:
+        return Response({'error': 'Invalid signature'}, status=401)
+
+    # Parse the request data
+    try:
+        event = request.data.get('event')
+        data = request.data.get('data')
+    except json.JSONDecodeError:
+        return Response({'error': 'Invalid payload'}, status=400)
+
+    # Process the event
+    if event == 'transaction.new':
+        handle_transaction_new(data)
+    elif event == 'transaction.updated':
+        handle_transaction_updated(data)
+    elif event == 'account.created':
+        handle_account_created(data)
+    # Add additional event handlers as needed
+    else:
+        return Response({'error': 'Unhandled event'}, status=400)
+
+    return Response({'status': 'success'}, status=200)
+
+
+def handle_transaction_new(data):
+    # Process the transaction.new event
+    print(f"Transaction New: {data}")
+
+
+def handle_transaction_updated(data):
+    # Process the transaction.updated event
+    print(f"Transaction Updated: {data}")
+
+
+def handle_account_created(data):
+    # Process the account.created event
+    print(f"Account Created: {data}")
