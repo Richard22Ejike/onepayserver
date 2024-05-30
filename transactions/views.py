@@ -181,7 +181,7 @@ def makeExternalTransfer(request, pk):
         # Check if the cumulative daily debit amount exceeds the limit
         today_debit_total = \
             Transaction.objects.filter(customer_id=user.customer_id,
-                                       created__date=date.today(),
+                                       date_sent=date.today(),
                                        credit=False).aggregate(Sum('amount'))[
                 'amount__sum'] or 0
         if today_debit_total + data['amount'] > max_daily_debit:
@@ -204,7 +204,7 @@ def makeExternalTransfer(request, pk):
                 reference=data['reference'],
                 credit=data['credit'],
             )
-            serializer = PayBillSerializer(bill, many=False)
+            serializer = TransactionSerializer(bill, many=False)
             return Response(serializer.data)
     else:
         return Response({"error": "Incorrect bank pin."}, status=400)
