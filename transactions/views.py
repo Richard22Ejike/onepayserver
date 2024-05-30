@@ -130,8 +130,9 @@ def makeExternalTransfer(request, pk):
     # Check if the bank_pin matches
     if data.get('pin') == user.bank_pin:
         url = "https://api.blochq.io/v1/transfers"
+        amount = data['amount'] * 100
         payload = {
-            "amount": data['amount'],
+            "amount": amount,
             "bank_code": data['bank_code'],
             "account_number": data['account_number'],
             "narration": data['narration'],
@@ -143,50 +144,50 @@ def makeExternalTransfer(request, pk):
             "content-type": "application/json",
             "authorization": f"Bearer {secret_key}"
         }
-        # Check the user's KYC tier and apply corresponding limits
-        if user.kyc_tier == 0:
-            # Tier 0 limits
-            max_deposit = 50000
-            max_transfer_withdrawal = 3000
-            max_balance = 300000
-            max_daily_debit = 30000
-        elif user.kyc_tier == 1:
-            # Tier 1 limits
-            max_deposit = 200000
-            max_transfer_withdrawal = 10000
-            max_balance = 500000
-            max_daily_debit = 30000
-        elif user.kyc_tier == 2:
-            # Tier 2 limits
-            max_deposit = 5000000
-            max_transfer_withdrawal = 1000000
-            max_balance = None  # No balance limit
-            max_daily_debit = 30000
-        else:
-            # Default to Tier 3 limits
-            max_deposit = 5000000
-            max_transfer_withdrawal = 1000000
-            max_balance = None  # No balance limit
-            max_daily_debit = 30000
-
-        # Check if the transaction exceeds the limits
-        if data['amount'] > max_deposit:
-            return Response({'error': 'Amount exceeds maximum deposit limit'}, status=status.HTTP_400_BAD_REQUEST)
-        if data['amount'] > max_transfer_withdrawal:
-            return Response({'error': 'Amount exceeds maximum transfer/withdrawal limit'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        if max_balance is not None and (user.balance + data['amount']) > max_balance:
-            return Response({'error': 'Transaction exceeds maximum balance limit'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Check if the cumulative daily debit amount exceeds the limit
-        today_debit_total = \
-            Transaction.objects.filter(customer_id=user.customer_id,
-                                       date_sent=date.today(),
-                                       credit=False).aggregate(Sum('amount'))[
-                'amount__sum'] or 0
-        if today_debit_total + data['amount'] > max_daily_debit:
-            return Response({'error': 'Transaction exceeds maximum daily cumulative debit amount limit'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # # Check the user's KYC tier and apply corresponding limits
+        # if user.kyc_tier == 0:
+        #     # Tier 0 limits
+        #     max_deposit = 50000
+        #     max_transfer_withdrawal = 3000
+        #     max_balance = 300000
+        #     max_daily_debit = 30000
+        # elif user.kyc_tier == 1:
+        #     # Tier 1 limits
+        #     max_deposit = 200000
+        #     max_transfer_withdrawal = 10000
+        #     max_balance = 500000
+        #     max_daily_debit = 30000
+        # elif user.kyc_tier == 2:
+        #     # Tier 2 limits
+        #     max_deposit = 5000000
+        #     max_transfer_withdrawal = 1000000
+        #     max_balance = None  # No balance limit
+        #     max_daily_debit = 30000
+        # else:
+        #     # Default to Tier 3 limits
+        #     max_deposit = 5000000
+        #     max_transfer_withdrawal = 1000000
+        #     max_balance = None  # No balance limit
+        #     max_daily_debit = 30000
+        #
+        # # Check if the transaction exceeds the limits
+        # if data['amount'] > max_deposit:
+        #     return Response({'error': 'Amount exceeds maximum deposit limit'}, status=status.HTTP_400_BAD_REQUEST)
+        # if data['amount'] > max_transfer_withdrawal:
+        #     return Response({'error': 'Amount exceeds maximum transfer/withdrawal limit'},
+        #                     status=status.HTTP_400_BAD_REQUEST)
+        # if max_balance is not None and (user.balance + data['amount']) > max_balance:
+        #     return Response({'error': 'Transaction exceeds maximum balance limit'}, status=status.HTTP_400_BAD_REQUEST)
+        #
+        # # Check if the cumulative daily debit amount exceeds the limit
+        # today_debit_total = \
+        #     Transaction.objects.filter(customer_id=user.customer_id,
+        #                                date_sent=date.today(),
+        #                                credit=False).aggregate(Sum('amount'))[
+        #         'amount__sum'] or 0
+        # if today_debit_total + data['amount'] > max_daily_debit:
+        #     return Response({'error': 'Transaction exceeds maximum daily cumulative debit amount limit'},
+        #                     status=status.HTTP_400_BAD_REQUEST)
 
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code != 200:
@@ -199,15 +200,24 @@ def makeExternalTransfer(request, pk):
                 bank_code=data['bank_code'],
                 bank=data['bank'],
                 account_number=data['account_number'],
+                customer_id=pk,
                 narration=data['narration'],
                 account_id=data['account_id'],
                 reference=data['reference'],
                 credit=data['credit'],
             )
             serializer = TransactionSerializer(bill, many=False)
+            print(serializer.data)
             return Response(serializer.data)
     else:
         return Response({"error": "Incorrect bank pin."}, status=400)
+
+
+@api_view(['GET'])
+def getTransaction(request):
+    transactions = Transaction.objects.all()
+    serializer = TransactionSerializer(transactions, many=True)
+    return Response(serializer.data)
 
 
 @api_view(['GET'])
@@ -304,6 +314,7 @@ def CreateEscrow(request, pk):
 
     serializer = EscrowSerializer(escrow, many=False)
     return Response(serializer.data)
+
 
 @api_view(['PUT'])
 def EditEscrow(request, pk):
@@ -468,7 +479,8 @@ def MakePaymentEscrows(request, pk):
     except Escrow.DoesNotExist:
         return Response({"error": "Escrow not found"}, status=status.HTTP_404_NOT_FOUND)
     except Escrow.MultipleObjectsReturned:
-        return Response({"error": "Multiple escrows found for this user with the given ID"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Multiple escrows found for this user with the given ID"},
+                        status=status.HTTP_400_BAD_REQUEST)
 
     try:
         user = User.objects.get(customer_id=pk)

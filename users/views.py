@@ -14,6 +14,8 @@ from django.contrib.auth import authenticate
 import json
 import hmac
 import hashlib
+
+from transactions.models import Transaction
 from .keys import secret_key, WEBHOOK_SECRET_KEY
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
@@ -734,7 +736,28 @@ def webhook_listener(request):
 
 
 def handle_transaction_new(data):
-    # Process the transaction.new event
+    try:
+        previous_account_balance = data['previous_account_balance']
+        current_account_balance = data['current_account_balance']
+        amount = data['amount']/100
+
+        if current_account_balance > previous_account_balance:
+            Transaction.objects.create(
+                receiver_name=data['meta_data'].get('sender_account_name', ''),
+                amount=amount,
+                bank_code=data.get('bank_code', ''),
+                bank=data.get('bank', ''),
+                account_number=data['account_number'],
+                customer_id=data['customer_id'],
+                narration=data.get('narration', ''),
+                account_id=data['account_id'],
+                reference=data['reference'],
+                credit=True,  # Indicating it's a credit transaction
+            )
+    except KeyError as e:
+        print(f"Missing expected data key: {e}")
+    except Exception as e:
+        print(f"Error processing transaction: {e}")
     print(f"Transaction New: {data}")
 
 
