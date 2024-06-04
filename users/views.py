@@ -192,8 +192,50 @@ def createUser(request):
                 account_response_data = account_response.json()
 
                 if not account_response_data['data']:
-                    return Response({'error': 'Customer exists but no account found.'},
-                                    status=status.HTTP_404_NOT_FOUND)
+                    response_data = response.json()
+                    account_url = "https://api.blochq.io/v1/accounts"
+                    account_payload = {
+                        "customer_id": customer_data['id'],
+                        "preferred_bank": "",
+                    }
+                    account_headers = {
+                        "accept": "application/json",
+                        "content-type": "application/json",
+                        "authorization": f"Bearer {secret_key}"  # Replace with your actual secret key
+                    }
+                    account_response = requests.post(account_url, json=account_payload, headers=account_headers)
+                    if account_response.status_code != 200:
+                        return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    if account_response.status_code == 200:
+                        account_response_data = account_response.json()
+                        user_account_data = account_response_data.get('data')
+                        print(user_account_data)
+                        user = User.objects.create_user(
+                            first_name=data['first_name'],
+                            last_name=data['last_name'],
+                            phone_number=data['phone_number'],
+                            password=data['password'],
+                            email=data['email'],
+                            customer_type=data['customer_type'],
+                            bvn=data['bvn'],
+                            organization_id=customer_data.get('organization_id', ''),
+                            customer_id=customer_data.get('id', ''),
+                            account_id=account_response_data.get('id', ''),
+                            account_number=account_response_data.get('account_number', ''),
+                            bank_name=account_response_data.get('bank_name', '')
+                        )
+                        # Generate or get existing token for the user
+                        token = Token.objects.create(user=user)
+                        user_tokens = user.tokens()
+                        user.access_token = str(user_tokens.get('access'))
+                        user.refresh_token = str(user_tokens.get('refresh'))
+
+                        serializer = UserSerializer(user, many=False)
+                        return Response({'user': serializer.data,
+                                         'token': token.key,
+                                         'access_token': str(user_tokens.get('access')),
+                                         'refresh_token': str(user_tokens.get('refresh'))
+                                         })
 
                 user_account_data = account_response_data['data'][0]
 
@@ -743,7 +785,7 @@ def handle_transaction_new(data):
     try:
         previous_account_balance = data['previous_account_balance']
         current_account_balance = data['current_account_balance']
-        amount = data['amount']/100
+        amount = data['amount'] / 100
 
         if current_account_balance > previous_account_balance:
             Transaction.objects.create(
