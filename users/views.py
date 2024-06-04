@@ -192,7 +192,6 @@ def createUser(request):
                 account_response_data = account_response.json()
 
                 if not account_response_data['data']:
-                    response_data = response.json()
                     account_url = "https://api.blochq.io/v1/accounts"
                     account_payload = {
                         "customer_id": customer_data['id'],
@@ -271,18 +270,10 @@ def createUser(request):
                 })
 
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        account_url = "https://api.blochq.io/v1/accounts"
         response_data = response.json()
         user_data = response_data.get('data')
-
-        # Check if the user has an account in Blochq
-        account_url = f"https://api.blochq.io/v1/accounts?customer_id={user_data['id']}"
-        account_response = requests.get(account_url, headers=headers)
-        account_response_data = account_response.json()
-
-        if not account_response_data['data']:
-            # Create an account if not exists
-            account_payload = {
+        account_payload = {
                 "customer_id": user_data['id'],
                 "alias": "business",
                 "collection_rules": {
@@ -291,17 +282,67 @@ def createUser(request):
                 }
             }
 
-            account_response = requests.post(account_url, json=account_payload, headers=headers)
-            if account_response.status_code != 200:
-                return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        account_response = requests.post(account_url, json=account_payload, headers=headers)
 
+        if account_response != 200:
+
+            # Check if the user has an account in Blochq
+            account_url = f"https://api.blochq.io/v1/accounts?customer_id={user_data['id']}"
+            account_response = requests.get(account_url, headers=headers)
             account_response_data = account_response.json()
-            user_account_data = account_response_data.get('data')
 
-        else:
-            user_account_data = account_response_data['data'][0]
+            if not account_response_data['data']:
+                # Create an account if not exists
+                account_payload = {
+                    "customer_id": user_data['id'],
+                    "alias": "business",
+                    "collection_rules": {
+                        "amount": 30000,
+                        "frequency": 2
+                    }
+                }
+
+                account_response = requests.post(account_url, json=account_payload, headers=headers)
+                if account_response.status_code != 200:
+                    return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                account_response_data = account_response.json()
+                user_account_data = account_response_data.get('data')
+                account_response_data = account_response.json()
+                user_account_data = account_response_data.get('data')
+                user = User.objects.create_user(
+                    first_name=data['first_name'],
+                    last_name=data['last_name'],
+                    phone_number=data['phone_number'],
+                    password=data['password'],
+                    email=data['email'],
+                    customer_type=data['customer_type'],
+                    bvn=data['bvn'],
+                    organization_id=user_data.get('organization_id', ''),
+                    customer_id=user_data.get('id', ''),
+                    account_id=user_account_data.get('id', ''),
+                    account_number=user_account_data.get('account_number', ''),
+                    bank_name=user_account_data.get('bank_name', '')
+                )
+
+                # Generate or get existing token for the user
+                token, created = Token.objects.get_or_create(user=user)
+
+                user_tokens = user.tokens()
+                user.access_token = str(user_tokens.get('access'))
+                user.refresh_token = str(user_tokens.get('refresh'))
+
+                serializer = UserSerializer(user, many=False)
+                return Response({
+                    'user': serializer.data,
+                    'token': token.key,
+                    'access_token': str(user_tokens.get('access')),
+                    'refresh_token': str(user_tokens.get('refresh'))
+                })
 
         # Create the user locally
+        account_response_data = account_response.json()
+        user_account_data = account_response_data.get('data')
         user = User.objects.create_user(
             first_name=data['first_name'],
             last_name=data['last_name'],
