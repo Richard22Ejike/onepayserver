@@ -136,12 +136,23 @@ def createUser(request):
         secret_key = "sk_live_65eedccca40a63e818c6cc5a65eedccca40a63e818c6cc5b"
 
         # Check if the user already exists locally
+        # Check if the user already exists locally
         existing_user = User.objects.filter(
             Q(phone_number=data['phone_number']) | Q(email=data['email']) | Q(bvn=data['bvn'])
         ).first()
 
         if existing_user:
-            print(f"User already exists locally: {existing_user}")
+            matched_fields = []
+            if existing_user.phone_number == data['phone_number']:
+                matched_fields.append(f"phone_number: {data['phone_number']}")
+            if existing_user.email == data['email']:
+                matched_fields.append(f"email: {data['email']}")
+            if existing_user.bvn == data['bvn']:
+                matched_fields.append(f"bvn: {data['bvn']}")
+
+            matched_fields_str = ", ".join(matched_fields)
+            print(f"User already exists locally: {existing_user} matches {matched_fields_str}")
+
             return Response({'error': 'User with the provided phone number, email, or BVN already exists.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
