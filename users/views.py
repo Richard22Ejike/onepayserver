@@ -141,6 +141,7 @@ def createUser(request):
         ).first()
 
         if existing_user:
+            print(f"User already exists locally: {existing_user}")
             return Response({'error': 'User with the provided phone number, email, or BVN already exists.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
