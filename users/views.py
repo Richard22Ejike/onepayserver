@@ -182,6 +182,12 @@ def createUser(request):
                                       customer['phone_number'] == data['phone_number'] or customer['email'] == data[
                                           'email'] or customer['bvn'] == data['bvn']), None)
 
+                if customer_data:
+                    print(f"Existing customer found: {customer_data}")
+                else:
+                    return Response({'error': 'Customer exists in Blochq but could not be found.'},
+                                    status=status.HTTP_404_NOT_FOUND)
+
                 if not customer_data:
                     return Response({'error': 'Customer exists in Blochq but could not be found.'},
                                     status=status.HTTP_404_NOT_FOUND)
