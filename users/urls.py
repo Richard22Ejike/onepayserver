@@ -14,7 +14,7 @@ urlpatterns = [
     path('users/set-pin/<str:pk>/', views.SetPin),  # Added for OTP verification
     path('users/password_reset_otp_verified/', views.password_reset_otp_verified),
     path('users/change-pin/<str:pk>/', views.ChangePin),
-    path('users/<str:pk>/update/', views.updateUser),
+    path('users/update/<str:pk>/', views.updateUser),
     path('users/<str:pk>/delete/', views.deleteUser),
     path('users/<str:pk>/', views.getUser),
     path('users/updateKYC1/<str:pk>/', views.updateUserToKYC1),  # Added for updating KYC step 1

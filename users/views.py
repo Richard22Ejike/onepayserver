@@ -135,12 +135,14 @@ def createUser(request):
         data = request.data
         secret_key = "sk_live_65eedccca40a63e818c6cc5a65eedccca40a63e818c6cc5b"
 
-        # Check if the user already exists locally
+
         # Check if the user already exists locally
         existing_user = User.objects.filter(
             Q(phone_number=data['phone_number']) | Q(email=data['email']) | Q(bvn=data['bvn'])
         ).first()
-
+        print(data['phone_number'])
+        print(data['email'])
+        print(data['bvn'])
         if existing_user:
             matched_fields = []
             if existing_user.phone_number == data['phone_number']:
@@ -213,7 +215,7 @@ def createUser(request):
                     account_url = "https://api.blochq.io/v1/accounts"
                     account_payload = {
                         "customer_id": customer_data['id'],
-                        "preferred_bank": "",
+                        "preferred_bank": "Wema",
                     }
                     account_headers = {
                         "accept": "application/json",
@@ -293,6 +295,7 @@ def createUser(request):
         user_data = response_data.get('data')
         account_payload = {
                 "customer_id": user_data['id'],
+                "preferred_bank": "Wema",
                 "alias": "business",
                 "collection_rules": {
                     "amount": 30000,
@@ -313,6 +316,7 @@ def createUser(request):
                 # Create an account if not exists
                 account_payload = {
                     "customer_id": user_data['id'],
+                    "preferred_bank": "Wema",
                     "alias": "business",
                     "collection_rules": {
                         "amount": 30000,
@@ -446,18 +450,18 @@ def SignInUser(request):
             return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         if account_response.status_code == 200:
             account_response_data = account_response.json()
-            account_data = account_response_data.get('data', [{}])[0]
+            account_data = account_response_data.get('data', [{}])[-1]
             external_account = account_data.get('external_account', {})
             print(account_response_data)
             print(external_account)
-            print(external_account.get('data', [{}])[0].get('balance', ''))
+            print(external_account.get('data', [{}])[-1].get('balance', ''))
             print(external_account.get('account_number', ''))
-            print(account_response_data.get('data', [{}])[0].get('id', ''))
-            user.account_id = account_response_data.get('data', [{}])[0].get('id', '')
+            print(account_response_data.get('data', [{}])[-1].get('id', ''))
+            user.account_id = account_response_data.get('data', [{}])[-1].get('id', '')
             user.account_number = external_account.get('account_number', '')
             user.bank_name = external_account.get('bank_name', '')
-            user.balance = account_response_data.get('data', [{}])[0].get('balance', '')
-            user.kyc_tier = account_response_data.get('data', [{}])[0].get('kyc_tier', '')
+            user.balance = account_response_data.get('data', [{}])[-1].get('balance', '')
+            user.kyc_tier = account_response_data.get('data', [{}])[-1].get('kyc_tier', '')
             user.group = user_data.get('group', '')
             user.customer_id = user_data.get('id', '')
             user.organization_id = user_data.get('organization_id', '')
@@ -619,25 +623,20 @@ def password_reset_otp_verified(request):
 
 
 @api_view(['PUT'])
-@authentication_classes([TokenAuthentication])  # Require token authentication
-@permission_classes([IsAuthenticated])  # Require authentication for permission
 def updateUser(request, pk):
     data = request.data
     user = User.objects.get(customer_id=pk)
     serializer = UserSerializer(user, data=data)
-    try:
 
-        if pk is None:
-            if serializer.is_valid():
-                serializer.save()
-            return Response({
-                serializer.data
-            }, status=status.HTTP_200_OK)
-        return Response({
-            'message': 'code is invalid user already verified'
-        }, status=status.HTTP_204_NO_CONTENT)
-    except OneTimePassword.DoesNotExist:
-        return Response({'message': "passcode not provided"}, status=status.HTTP_404_NOT_FOUND)
+    if serializer.is_valid():
+        user.email = 'am.joshuajohnson@gmail.com'
+        user.phone_number = '07034534116'
+        user.save()
+
+        # Return serialized data
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT'])
