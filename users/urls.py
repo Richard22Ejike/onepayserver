@@ -18,8 +18,8 @@ urlpatterns = [
     path('users/<str:pk>/delete/', views.deleteUser),
     path('users/<str:pk>/', views.getUser),
     path('users/updateKYC1/<str:pk>/', views.updateUserToKYC1),  # Added for updating KYC step 1
-    path('users/<str:pk>/updateKYC2/', views.updateUserToKYC2),  # Added for updating KYC step 2
-    path('users/<str:pk>/updateKYC2v2/', views.updateUserToKYC2v2),
-    path('users/<str:pk>/updateKYC3/', views.updateUserToKYC3),  # Added for updating KYC step 3
+    path('users/updateKYC2/<str:pk>/', views.updateUserToKYC2),  # Added for updating KYC step 2
+    path('users/updateKYC2v2/<str:pk>/', views.updateUserToKYC2v2),
+    path('users/updateKYC3/<str:pk>/', views.updateUserToKYC3),  # Added for updating KYC step 3
     path('api/core/guest/webhook/', views.webhook_listener, name='webhook_listener'),
 ]
