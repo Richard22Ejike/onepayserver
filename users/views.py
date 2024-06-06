@@ -668,6 +668,7 @@ def updateUserToKYC1(request, pk):
 
     response = requests.put(url, json=payload, headers=headers)
     if response.status_code != 200:
+        print(response.json())
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if response.status_code == 200:
@@ -726,9 +727,11 @@ def updateUserToKYC2v2(request, pk):
 
     response = requests.put(url, json=payload, headers=headers)
     if response.status_code != 200:
+        print(response.json())
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if response.status_code == 200:
+        print(response.json())
         user.kyc_tier = 2
         user.save()
         if serializer.is_valid():
@@ -756,9 +759,11 @@ def updateUserToKYC3(request, pk):
     response = requests.put(url, json=payload, headers=headers)
 
     if response.status_code != 200:
+        print(response.json())
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if response.status_code == 200:
+        print(response.json())
         user.kyc_tier = 3
         user.save()
         # Validate the serializer
