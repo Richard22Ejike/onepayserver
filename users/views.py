@@ -845,7 +845,7 @@ def handle_transaction_new(data):
         current_account_balance = data['current_account_balance']
         amount = data['amount'] / 100
 
-        if current_account_balance > previous_account_balance:
+        if current_account_balance > previous_account_balance or previous_account_balance is None:
             Transaction.objects.create(
                 receiver_name=data['meta_data'].get('sender_account_name', ''),
                 amount=amount,
