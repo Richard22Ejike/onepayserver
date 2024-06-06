@@ -671,6 +671,7 @@ def updateUserToKYC1(request, pk):
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if response.status_code == 200:
+        print(response.json())
         user.kyc_tier = 1
         user.save()
         serializer = UserSerializer(user, many=False)
