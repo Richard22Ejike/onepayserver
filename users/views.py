@@ -675,11 +675,12 @@ def webhook_listener(request):
 
     # It's a good idea to log the received events
     log_event(payload)
+    print('connected')
 
     # Retrieve the event type from the payload
     event = payload.get("event")
     data = payload.get("data")
-
+    print('connected')
     # Handle different event types
     if event == 'charge.completed':
         handle_charge_completed(data)
@@ -690,7 +691,7 @@ def webhook_listener(request):
     else:
         # Unhandled event type
         return Response({'error': 'Unhandled event'}, status=400)
-
+    print('connected')
     # Return a success response to Flutterwave
     return Response(status=200)
 
