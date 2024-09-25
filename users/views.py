@@ -190,7 +190,7 @@ def addUsers(request):
             "created": "2024-08-14T16:34:48.525901Z",
             "bank_pin": "555555",
             "balance": 0.0,
-            "device_id": "vzvzc",
+            "device_id": "e312410a-f6d5-4f95-b177-c0c2204edbc0",
             "street": "zcv",
             "city": "vczc",
             "state": "zcvzcz",
