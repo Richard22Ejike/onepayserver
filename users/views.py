@@ -656,6 +656,7 @@ def SetPin(request, pk):
 @csrf_exempt
 @api_view(['POST'])
 def webhook_listener(request):
+    print('connected')
     # Retrieve the Flutterwave secret hash from the environment variables
     secret_hash = config("FLW_SECRET_HASH")
 
