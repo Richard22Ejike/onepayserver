@@ -1,11 +1,16 @@
 from datetime import date
+
+import onesignal
 import requests
+from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
+from onesignal.api import default_api
+from onesignal.model.notification import Notification
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from transactions.models import Transaction, PayBill, PaymentLink, Card, Notification, Escrow, ChatMessage
+from transactions.models import Transaction, PayBill, PaymentLink, Card, Notifications, Escrow, ChatMessage
 from transactions.serializers import TransactionSerializer, PayBillSerializer, PaymentLinkSerializer, CardSerializer, \
     NotificationSerializer, EscrowSerializer, ChatSerializer
 from users.keys import secret_key
@@ -14,8 +19,18 @@ from users.serializers import UserSerializer
 from users.utils import send_email_to_user
 from django.utils import timezone
 import uuid
+from django.http import HttpRequest
+from rest_framework.request import Request
+
 from channels.generic.websocket import WebsocketConsumer
 import json
+
+configuration = onesignal.Configuration(
+    app_key="56618190-490a-4dc6-af2e-71ea67697f99",
+    user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
+)
+
+
 
 
 # Bill Payments
@@ -27,88 +42,92 @@ def makeBillPayment(request, pk):
 
     # Check if the bank_pin matches
     if data.get('pin') == user.bank_pin:
+        url = f"https://api.flutterwave.com/v3/billers/{data['operator_id']}/items/{data['product_id']}/payment"
+
+        # Prepare the payload as per Flutterwave's API structure
         payload = {
-            "amount": data['amount'],
-            "product_id": data['product_id'],
-            "operator_id": data['operator_id'],
-            "account_id": data['account_id'],
-            "device_details": {
-                "meter_type": data['meter_type'],
-                "device_number": data['device_number'],
-                "beneficiary_msisdn": data['beneficiary_msisdn'],
-            }
+            "country": "NG",  # Adjust country if necessary
+            "customer_id": data['customer_id'],  # Customer identifier for the bill payment
+            "amount": data['amount'],  # Bill payment amount
+            "reference": data['reference'],  # Unique reference for this transaction
+            "callback_url": "https://your-callback-url.com",  # Replace with your callback URL
         }
-        print(data['amount'])
-        print(data['product_id'])
-        print(data['operator_id'])
-        print(data['account_id'])
-        print(data['meter_type'])
-        print(data['device_number'])
-        print(data['beneficiary_msisdn'])
 
-        url = f"https://api.blochq.io/v1/bills/payment?bill={data['bill_type']}"
-
+        # Set headers with authorization token
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"
+            "authorization": f"Bearer {secret_key}"  # Ensure to pass your Flutterwave secret key
         }
 
+        # Make the POST request to Flutterwave API
         response = requests.post(url, headers=headers, json=payload)
-        print(response)
+
         if response.status_code != 200:
             # If the request was not successful, return an error response
-            print(response.text)
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         if response.status_code == 200:
+            # Log the bill payment in your database
             bill = PayBill.objects.create(
                 amount=data['amount'],
-                product_id=data['product_id'],
-                operator_id=data['operator_id'],
-                account_id=data['account_id'],
-                meter_type=data['meter_type'],
+                product_id=data['product_id'],  # If needed
+                operator_id=data['operator_id'],  # If needed
+                account_id=data['account_id'],  # If needed
+                meter_type=data['meter_type'],  # If needed
                 bill_type=data['bill_type'],
-                device_number=data['device_number'],
-                beneficiary_msisdn=data['beneficiary_msisdn'],
+                device_number=data['device_number'],  # If needed
+                beneficiary_msisdn=data['beneficiary_msisdn'],  # If needed
             )
 
+            # Serialize the bill payment data and return the response
             serializer = PayBillSerializer(bill, many=False)
             return Response(serializer.data)
+    else:
+        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # Transfers
 @api_view(['POST'])
-def makeInternelTransfer(request, pk):
+def makeInternalTransfer(request, pk):
     data = request.data
-    # Fetch the user by customer_id (pk)
+    print(pk)
     user = get_object_or_404(User, customer_id=pk)
-    # Check if the bank_pin matches
-    if data.get('pin') == user.bank_pin:
-        url = "https://api.blochq.io/v1/transfers/internal"
 
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"
-        }
-        payload = {
-            "amount": data['amount'],
-            "to_account_id": data['account_number'],
-            "narration": data['narration'],
-            "from_account_id": data['account_id'],
-            "reference": data['reference'],
-        }
+    if data.get('pin') != user.bank_pin:
+        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
 
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code != 200:
-            # If the request was not successful, return an error response
-            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        if response.status_code == 200:
+    amount = data['amount'] * 100
+    to_account_number = data['account_number']
+    print(to_account_number)
+
+    # Fetch the receiving user by account number
+    receiving_user = get_object_or_404(User, account_number=to_account_number)
+
+    if user.id == receiving_user.id:
+        return Response({"error": "Can transfer to your own account."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Ensure that the user has sufficient balance for the transfer
+    if user.balance < amount:
+        return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Perform the transfer within a transaction to ensure atomicity
+    try:
+        with transaction.atomic():
+            # Decrease the sender's balance
+            user.balance -= amount
+            user.save()
+
+            # Increase the receiver's balance
+            receiving_user.balance += amount
+            receiving_user.save()
+
+            # Create the transaction record
             bill = Transaction.objects.create(
-                receiver_name=data['receiver_name'],
+                receiver_name=receiving_user.first_name,
                 amount=data['amount'],
                 bank_code=data['bank_code'],
-                account_number=data['account_number'],
+                account_number=to_account_number,
                 narration=data['narration'],
                 account_id=data['account_id'],
                 bank=data['bank'],
@@ -118,99 +137,112 @@ def makeInternelTransfer(request, pk):
 
             # Serialize the transaction
             serializer = TransactionSerializer(bill, many=False)
-            return Response(serializer.data)
-    else:
-        return Response({"error": "Incorrect bank pin."}, status=400)
+
+            # Call SentNotifications endpoint for the receiving user
+            #
+            # with onesignal.ApiClient(configuration) as api_client:
+            #     # Create an instance of the API class
+            #     api_instance = default_api.DefaultApi(api_client)
+            #     notification = Notification(
+            #         app_id='56618190-490a-4dc6-af2e-71ea67697f99',
+            #         include_player_ids=[receiving_user.device_id],
+            #         contents={"en": f'You have received {data["amount"]} from {user.first_name}.'}
+            #     )
+            #
+            #     # example passing only required values which don't have defaults set
+            #     try:
+            #         # Create notification
+            #         api_response = api_instance.create_notification(notification)
+            #         print(api_response)
+            #     except onesignal.ApiException as e:
+            #         print("Exception when calling DefaultApi->create_notification: %s\n" % e)
+            # Notifications.objects.create(
+            #     device_id=receiving_user.device_id,
+            #     customer_id=receiving_user.customer_id,
+            #     topic='Transfer',
+            #     message=f'You have received {data["amount"]} from {user.first_name}.',
+            # )
+            #
+            # # Call SentNotifications endpoint for the sending user
+            # with onesignal.ApiClient(configuration) as api_client:
+            #     # Create an instance of the API class
+            #     api_instance = default_api.DefaultApi(api_client)
+            #     notification = Notification(
+            #         app_id='56618190-490a-4dc6-af2e-71ea67697f99',
+            #         include_player_ids=[user.device_id],
+            #         contents={"en": f'You have sent {data["amount"]} to {receiving_user.first_name}.'}
+            #     )
+            #
+            #     # example passing only required values which don't have defaults set
+            #     try:
+            #         # Create notification
+            #         api_response = api_instance.create_notification(notification)
+            #         print(api_response)
+            #     except onesignal.ApiException as e:
+            #         print("Exception when calling DefaultApi->create_notification: %s\n" % e)
+            # Notifications.objects.create(
+            #     device_id=user.device_id,
+            #     customer_id=user.customer_id,
+            #     topic='Transfer',
+            #     message=f'You have sent {data["amount"]} to {receiving_user.first_name}.',
+            # )
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(e)
+        return Response({"error": 'something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def makeExternalTransfer(request, pk):
     data = request.data
     user = get_object_or_404(User, customer_id=pk)
+
     # Check if the bank_pin matches
     if data.get('pin') == user.bank_pin:
-        url = "https://api.blochq.io/v1/transfers"
-        amount = data['amount'] * 100
+        url = "https://api.flutterwave.com/v3/transfers"
         payload = {
-            "amount": amount,
-            "bank_code": data['bank_code'],
+            "account_bank": data['bank_code'],  # Flutterwave uses 'account_bank' for the bank code
             "account_number": data['account_number'],
+            "amount": data['amount'],
             "narration": data['narration'],
-            "account_id": data['account_id'],
+            "currency": "NGN",  # Currency for Flutterwave is specified in this field
             "reference": data['reference'],
+            "callback_url": "https://www.flutterwave.com/ng/",  # Customize this if needed
+            "debit_currency": "NGN"
         }
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"
+            "authorization": f"Bearer {secret_key}"  # Ensure you have your Flutterwave secret key
         }
-        # # Check the user's KYC tier and apply corresponding limits
-        # if user.kyc_tier == 0:
-        #     # Tier 0 limits
-        #     max_deposit = 50000
-        #     max_transfer_withdrawal = 3000
-        #     max_balance = 300000
-        #     max_daily_debit = 30000
-        # elif user.kyc_tier == 1:
-        #     # Tier 1 limits
-        #     max_deposit = 200000
-        #     max_transfer_withdrawal = 10000
-        #     max_balance = 500000
-        #     max_daily_debit = 30000
-        # elif user.kyc_tier == 2:
-        #     # Tier 2 limits
-        #     max_deposit = 5000000
-        #     max_transfer_withdrawal = 1000000
-        #     max_balance = None  # No balance limit
-        #     max_daily_debit = 30000
-        # else:
-        #     # Default to Tier 3 limits
-        #     max_deposit = 5000000
-        #     max_transfer_withdrawal = 1000000
-        #     max_balance = None  # No balance limit
-        #     max_daily_debit = 30000
-        #
-        # # Check if the transaction exceeds the limits
-        # if data['amount'] > max_deposit:
-        #     return Response({'error': 'Amount exceeds maximum deposit limit'}, status=status.HTTP_400_BAD_REQUEST)
-        # if data['amount'] > max_transfer_withdrawal:
-        #     return Response({'error': 'Amount exceeds maximum transfer/withdrawal limit'},
-        #                     status=status.HTTP_400_BAD_REQUEST)
-        # if max_balance is not None and (user.balance + data['amount']) > max_balance:
-        #     return Response({'error': 'Transaction exceeds maximum balance limit'}, status=status.HTTP_400_BAD_REQUEST)
-        #
-        # # Check if the cumulative daily debit amount exceeds the limit
-        # today_debit_total = \
-        #     Transaction.objects.filter(customer_id=user.customer_id,
-        #                                date_sent=date.today(),
-        #                                credit=False).aggregate(Sum('amount'))[
-        #         'amount__sum'] or 0
-        # if today_debit_total + data['amount'] > max_daily_debit:
-        #     return Response({'error': 'Transaction exceeds maximum daily cumulative debit amount limit'},
-        #                     status=status.HTTP_400_BAD_REQUEST)
-
         response = requests.post(url, headers=headers, json=payload)
+
         if response.status_code != 200:
             # If the request was not successful, return an error response
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        if response.status_code == 200:
+
+        response_data = response.json()
+        if response.status_code == 200 and response_data['status'] == 'success':
+            transaction_data = response_data['data']
             bill = Transaction.objects.create(
-                receiver_name=data['receiver_name'],
-                amount=data['amount'],
-                bank_code=data['bank_code'],
-                bank=data['bank'],
-                account_number=data['account_number'],
+                receiver_name=data['receiver_name'],  # Receiver name needs to be passed as in the request
+                amount=transaction_data['amount'],  # Amount is already in the original currency
+                bank_code=transaction_data['bank_code'],
+                bank=transaction_data['bank_name'],  # Adjust field names based on response structure
+                account_number=transaction_data['account_number'],
                 customer_id=pk,
                 narration=data['narration'],
                 account_id=data['account_id'],
-                reference=data['reference'],
+                reference=transaction_data['reference'],
                 credit=data['credit'],
             )
             serializer = TransactionSerializer(bill, many=False)
             print(serializer.data)
             return Response(serializer.data)
     else:
-        return Response({"error": "Incorrect bank pin."}, status=400)
+        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -224,6 +256,7 @@ def getTransaction(request):
 def getTransactions(request, pk):
     transactions = Transaction.objects.filter(customer_id=pk).order_by('-id')
     serializer = TransactionSerializer(transactions, many=True)
+    print(serializer.data)
     return Response(serializer.data)
 
 
@@ -238,7 +271,7 @@ def findAccountbyId(request, pk):
 # Notifications
 @api_view(['GET'])
 def getNotifications(request, pk):
-    notifications = Notification.objects.filter(account_id=pk)
+    notifications = Notifications.objects.filter(account_id=pk)
     serializer = NotificationSerializer(notifications, many=True)
     return Response(serializer.data)
 
@@ -246,7 +279,20 @@ def getNotifications(request, pk):
 @api_view(['POST'])
 def SentNotifications(request):
     data = request.data
-    notification = Notification.objects.create(
+    with onesignal.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = default_api.DefaultApi(api_client)
+        notification = Notifications(None)
+
+        # example passing only required values which don't have defaults set
+        try:
+            # Create notification
+            api_response = api_instance.create_notification(notification)
+            print(api_response)
+        except onesignal.ApiException as e:
+            print("Exception when calling DefaultApi->create_notification: %s\n" % e)
+    notification = Notifications.objects.create(
+        device_id=data['device_id'],
         customer_id=data['customer_id'],
         topic=data['topic'],
         message=data['message'],
@@ -274,19 +320,31 @@ def CreateEscrow(request, pk):
 
     # Fetch the user by customer_id (pk)
     user = get_object_or_404(User, customer_id=pk)
-
+    make_payment = False
     # Check if the bank_pin matches
     if data.get('pin') != user.bank_pin:
         return Response({"error": "Incorrect bank pin."}, status=400)
+    subject = "One time Passcode for email Verification"
+    email_body = (f"<strong>hi thanks for Using OnePlug  \n {user.first_name} has created an escrow with you. please "
+                  f"check your profile to accepted or cancel the request  </strong>")
+
+    # # Send the OTP to the user via email
+    send_email_to_user(data['receiver_email'], email_body, subject)
 
     # Check if role equals role_paying and if user has enough escrow_fund
     if data['role'] == data['role_paying']:
-        escrow_amount = data.get('escrow_amount')  # Assume escrow_amount is part of the request data
+        print(user.balance)
+
+        escrow_amount = data.get('amount') * 100  # Assume escrow_amount is part of the request data
+        print(escrow_amount)
         if user.balance < escrow_amount:
             return Response({"error": "Insufficient balance."}, status=400)
 
         # Deduct the escrow amount from user's escrow fund
+
         user.balance -= escrow_amount
+        user.escrow_fund += escrow_amount
+        make_payment = True
         user.save()
 
     # Generate a unique reference number using a combination of timestamp and UUID
@@ -301,7 +359,7 @@ def CreateEscrow(request, pk):
         receiver_email=data['receiver_email'],
         payment_type=data['payment_type'],
         role=data['role'],
-        amount=data['amount'],
+        amount=data['amount'] * 100,
         sender_name=data['sender_name'],
         account_id=data['account_id'],
         role_paying=data['role_paying'],
@@ -309,6 +367,7 @@ def CreateEscrow(request, pk):
         milestone=data['milestone'],
         number_milestone=data['number_milestone'],
         receiver_id=data['receiver_id'],
+        make_payment=make_payment,
         reference=reference  # Assign the generated reference number
     )
 
@@ -336,6 +395,7 @@ def EmailEscrow(request, pk):
         escrow = Escrow.objects.get(id=pk)
     except Escrow.DoesNotExist:
         return Response({'error': 'Escrow not found'}, status=status.HTTP_404_NOT_FOUND)
+
     send_email_to_user(escrow.receiver_email, '')
     serializer = EscrowSerializer(instance=escrow, data=request.data)
     if serializer.is_valid():
@@ -372,6 +432,7 @@ def getEscrows(request, pk):
 def updateEscrows(request, pk):
     escrow = Escrow.objects.get(id=pk)
     data = request.data
+    user = User.objects.get(email=escrow.receiver_email)
     if data.get('escrow_status') == 'Accept Request':
         escrow.escrow_Status = 'Accept Request'
         escrow.accepted = True
@@ -409,63 +470,69 @@ def disputeEscrows(request, pk):
 
 @api_view(['PUT'])
 def ReleaseEscrowsFund(request, pk):
+    data = request.data
+
     # Fetch the escrow by customer_id
-    escrow = get_object_or_404(Escrow, customer_id=pk)
+    print('escrow')
+    escrow = Escrow.objects.get(id=pk)
+
+    print('user')
     # Fetch the user by customer_id
-    user = get_object_or_404(User, customer_id=pk)
+    user = get_object_or_404(User, customer_id=escrow.customer_id)
+
+    print('user')
     # Fetch the receiver by receiver_email
     receiver = get_object_or_404(User, email=escrow.receiver_email)
+    print(user)
+    print(receiver)
+    print(user.escrow_fund)
+    print(receiver.escrow_fund)
+    # Determine the direction of the transaction
+    if escrow.role == escrow.role_paying:
+        # User sends amount to the receiver
+        sender = user
+        recipient = receiver
+    else:
+        # Receiver sends amount to the user
+        sender = receiver
+        recipient = user
 
-    data = {
-        'amount': escrow.amount,
-        'to_account_id': receiver.account_id,
-        'narration': 'Escrow Release',
-        'from_account_id': user.account_id,
-        'reference': escrow.reference
-    }
+    # Ensure sender has enough balance
+    if sender.escrow_fund < escrow.amount:
+        return Response({"error": "Insufficient balance."}, status=400)
 
-    url = "https://api.blochq.io/v1/transfers/internal"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"  # make sure secret_key is defined somewhere
-    }
-    payload = {
-        "amount": data['amount'],
-        "to_account_id": data['to_account_id'],
-        "narration": data['narration'],
-        "from_account_id": data['from_account_id'],
-        "reference": data['reference'],
-    }
+    # Deduct the amount from the sender's balance
+    print(sender.escrow_fund)
+    sender.escrow_fund -= escrow.amount
+    sender.save()
+    print(sender.escrow_fund)
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        # If the request was not successful, return an error response
-        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # Add the amount to the recipient's balance
+    print(sender.balance)
+    recipient.balance += escrow.amount
+    recipient.save()
+    print(sender.balance)
 
-    if response.status_code == 200:
-        # Create a transaction record
-        bill = Transaction.objects.create(
-            receiver_name=receiver.name,
-            amount=data['amount'],
-            bank_code='',  # add appropriate bank code
-            account_number=receiver.account_id,
-            narration=data['narration'],
-            account_id=user.account_id,
-            bank=user.bank_name,  # add appropriate bank name
-            credit=True,  # set as credit transaction
-            customer_id=user.customer_id
-        )
+    # Create a transaction record
+    bill = Transaction.objects.create(
+        receiver_name=recipient.first_name,
+        amount=escrow.amount,
+        bank_code='',  # add appropriate bank code
+        account_number=recipient.account_id,
+        narration=data.get('narration', ''),
+        account_id=sender.account_id,
+        bank=sender.bank_name,  # add appropriate bank name
+        credit=True,  # set as credit transaction
+        customer_id=sender.customer_id
+    )
 
-        # Update the escrow status to 'Completed'
-        escrow.escrow_Status = 'Completed'
-        escrow.save()
+    # Update the escrow status to 'Completed'
+    escrow.escrow_Status = 'Completed'
+    escrow.save()
 
-        # Serialize and return the updated escrow object
-        serializer = EscrowSerializer(escrow, many=False)
-        return Response(serializer.data)
-
-    return Response({"error": "Unknown error occurred."}, status=500)
+    # Serialize and return the updated escrow object
+    serializer = EscrowSerializer(escrow, many=False)
+    return Response(serializer.data)
 
 
 @api_view(['PUT'])
@@ -483,10 +550,9 @@ def MakePaymentEscrows(request, pk):
                         status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        user = User.objects.get(customer_id=pk)
+        user = User.objects.get(email=escrow.receiver_email)
     except User.DoesNotExist:
         return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-
     if user.balance >= escrow.amount:
         user.balance -= escrow.amount
         user.escrow_fund += escrow.amount
@@ -700,32 +766,6 @@ def getCardDetails(request, pk):
 
 
 @api_view(['POST'])
-def linkCard(request, pk):
-    data = request.data
-    card = Card.objects.get(customer_id=pk)
-    url = "https://api.blochq.io/v1/cards/fixed-account/link"
-
-    payload = {
-        "card_id": card.card_id,
-        "account_id": data.get('account_id')
-    }
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
-    }
-
-    response = requests.put(url, json=payload, headers=headers)
-    if response.status_code != 200:
-        # If the request was not successful, return an error response
-        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    if response.status_code == 200:
-        serializer = CardSerializer(card, many=False)
-        return Response(serializer.data)
-
-
-@api_view(['POST'])
 def WithDrawCard(request, pk):
     data = request.data
     card = Card.objects.get(id=pk)
@@ -753,14 +793,24 @@ def getPaymentLinks(request, pk):
 @api_view(['POST'])
 def CreatePaymentLink(request):
     data = request.data
-    url = "https://api.blochq.io/v1/paymentlinks"
+    url = "https://sandbox-api-d.squadco.com/payment_link/otp"
 
     payload = {
         "name": data['name'],
+        "hash": data['hash'],
+        "link_status": data['link_status'],
+        "expire_by": data['expire_by'],
+        "amounts": [
+            {
+                "amount": data['amount'],
+                "currency_id": data['currency']
+            }
+        ],
         "description": data['description'],
-        "amount": data['amount'],
-        "currency": "NGN"
+        "redirect_link": data['redirect_link'],
+        "return_msg": data['return_msg']
     }
+
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -776,14 +826,13 @@ def CreatePaymentLink(request):
         print(response_data)
         user_data = response_data.get('data')
         link = PaymentLink.objects.create(
-            link_id=user_data.get('link_id', ''),
-            link_url=user_data.get('link_url', ''),
+            link_id=user_data.get('merchant_id', ''),
+            link_url=user_data.get('redirect_link', ''),
             customer_id=data['customer_id'],
-            name=data['name'],
-            description=data['description'],
-            amount=data['amount'],
-            currency=data['currency'],
-
+            name=user_data.get('name', ''),
+            description=user_data.get('description', ''),
+            amount=user_data['amounts'][0]['amount'],
+            currency=user_data['amounts'][0]['currency_id'],
         )
 
         serializer = PaymentLinkSerializer(link, many=False)
@@ -815,181 +864,3 @@ def getChats(request, pk):
     messages = ChatMessage.objects.filter(escrow_id=pk)
     serializer = ChatSerializer(messages, many=True)
     return Response(serializer.data)
-
-# @api_view(['GET'])
-# def getChats(request):
-#     messages = ChatMessage.objects.all()  # Fetch all chat messages
-#     serializer = ChatSerializer(messages, many=True)
-#     return Response(serializer.data)
-
-
-# Create your views here.
-
-# {
-#   "success": true,
-#   "data": [
-#     {
-#       "id": "6653370cba54547d22bf2c29",
-#       "full_name": "steve john",
-#       "phone_number": "09054454476",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "john@mail.com",
-#       "country": "",
-#       "group": "main",
-#       "status": "active",
-#       "created_at": "2024-05-26T13:20:12.65Z",
-#       "updated_at": "0001-01-01T00:00:00Z",
-#       "first_name": "john",
-#       "last_name": "steve",
-#       "kyc_tier": "0",
-#       "bvn": "2222222227",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "6651fc31ba54547d22bf27b6",
-#       "full_name": "steve john",
-#       "phone_number": "09054454479",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "john@mail",
-#       "country": "",
-#       "group": "main",
-#       "status": "active",
-#       "created_at": "2024-05-25T14:56:49.522Z",
-#       "updated_at": "0001-01-01T00:00:00Z",
-#       "first_name": "john",
-#       "last_name": "steve",
-#       "kyc_tier": "0",
-#       "bvn": "2222222222",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "6651f700ba54547d22bf278c",
-#       "full_name": "john john",
-#       "phone_number": "09044558783",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "like.moles@mail.com",
-#       "country": "",
-#       "group": "main",
-#       "status": "active",
-#       "created_at": "2024-05-25T14:34:40.247Z",
-#       "updated_at": "0001-01-01T00:00:00Z",
-#       "first_name": "john",
-#       "last_name": "john",
-#       "kyc_tier": "0",
-#       "bvn": "2234566789",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "662ce825b5965fa7cb39bd36",
-#       "full_name": "Richard Ejike",
-#       "phone_number": "",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "richard.ekene@aun.edu.ng",
-#       "country": "",
-#       "group": "main",
-#       "status": "active",
-#       "created_at": "2024-04-27T11:57:25.196Z",
-#       "updated_at": "0001-01-01T00:00:00Z",
-#       "first_name": "Richard",
-#       "last_name": "Ejike",
-#       "kyc_tier": "0",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "661d0ed69e2f2a169cffd588",
-#       "full_name": "Ejike Richard",
-#       "phone_number": "09055444429",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "richard.ekene22@outlok.com",
-#       "country": "",
-#       "group": "main",
-#       "status": "archived",
-#       "created_at": "2024-04-15T11:26:14.539Z",
-#       "updated_at": "2024-04-15T11:27:30.45Z",
-#       "first_name": "Richard",
-#       "last_name": "Ejike",
-#       "kyc_tier": "0",
-#       "bvn": "22398644891",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "661d07649e2f2a169cffd536",
-#       "full_name": "Ejike Richard",
-#       "phone_number": "09055444489",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "richard.ekene22@outlook.com",
-#       "country": "",
-#       "group": "main",
-#       "status": "active",
-#       "created_at": "2024-04-15T10:54:28.75Z",
-#       "updated_at": "2024-05-27T22:27:12.642Z",
-#       "first_name": "Richard",
-#       "last_name": "Ejike",
-#       "kyc_tier": "0",
-#       "bvn": "22398644895",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     },
-#     {
-#       "id": "661d02c19e2f2a169cffd465",
-#       "full_name": "Ejike Richard",
-#       "phone_number": "09066774466",
-#       "organization_id": "65eedccca40a63e818c6cc59",
-#       "environment": "live",
-#       "email": "richard.eke@outlook.com",
-#       "country": "",
-#       "group": "main",
-#       "status": "archived",
-#       "created_at": "2024-04-15T10:34:41.863Z",
-#       "updated_at": "2024-04-15T11:27:43.98Z",
-#       "first_name": "Richa",
-#       "last_name": "Eji",
-#       "kyc_tier": "0",
-#       "bvn": "46767575787",
-#       "date_of_birth": "0001-01-01T00:00:00Z",
-#       "customer_type": "Personal",
-#       "source": "Banking",
-#       "address": {
-#         "street": ""
-#       }
-#     }
-#   ],
-#   "message": "get customers",
-#   "metadata": {
-#     "has_next": false,
-#     "has_previous": false
-#   }
-# }

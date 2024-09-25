@@ -1,9 +1,9 @@
+import os
 import random
-
-from django.conf import settings
-from django.core.mail import EmailMessage
-from django.core.mail import send_mail
-
+import requests
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from decouple import config
 from users.models import User, OneTimePassword
 
 
@@ -14,16 +14,42 @@ def GenerateOtp():
     return otp
 
 
-def send_email_to_user(email, otpCode):
-    Subject = "One time Passcode for email Verification"
-    otp_code = GenerateOtp()
-    print(otp_code)
-    user = User.objects.get(email=email)
-    current_site = 'myAuth.com'
-    email_body = f"hi {user.first_name} thanks for  signing up your \n one time token {otpCode}"
-    send_mail(Subject, email_body, 'settings.EMAIL_HOST_USER', ['richard.ekene22@outlook.com'])
-    from_email = settings.DEFAULT_FROM_EMAIL
+def send_email_to_user(email, message, subject):
+    message = Mail(
+        from_email='support@oneplug.ng ',
+        to_emails=email,
+        subject=subject,
+        html_content=message)
+    try:
+        print('the email')
+        sg = SendGridAPIClient(config('EMAIL_HOST_PASSWORD'), )
+        response = sg.send(message)
+        print(response.status_code)
+        print(response.body)
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
-    OneTimePassword.objects.create(user=user, code=otp_code)
-    # send_email = EmailMessage(subject=Subject, body=email_body, from_email=from_email, to=[email])
-    # send_email.send(fail_silently=True)
+
+def send_sms(to, sms, api_key, from_="OnePlugPay", type_="plain", channel="generic", media_url=None, media_caption=None):
+    url = "https://api.ng.termii.com/api/sms/send"
+    payload = {
+        "to": f"+234${to}",
+        "from": from_,
+        "sms": sms,
+        "type": type_,
+        "channel": channel,
+        "api_key": api_key,
+    }
+
+    if media_url and media_caption:
+        payload["media"] = {
+            "url": media_url,
+            "caption": media_caption
+        }
+
+    headers = {
+        'Content-Type': 'application/json',
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    print(response.text)

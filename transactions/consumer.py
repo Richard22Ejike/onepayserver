@@ -2,6 +2,7 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from asgiref.sync import async_to_sync, sync_to_async
 from transactions.models import ChatMessage
+from users.models import User
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -28,12 +29,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         text_data_json = json.loads(text_data)
         message = text_data_json["message"]
         username = text_data_json["username"]
+        sender_id = text_data_json["sender_id"]
+        receiver_id = text_data_json["receiver_id"]
+        print(sender_id)
+        print(receiver_id)
+        # Fetch the User instances for sender and receiver
+        sender = await sync_to_async(User.objects.get)(id=sender_id)
+        receiver = await sync_to_async(User.objects.get)(id=receiver_id)
+
 
         # Wrap the synchronous database operation in sync_to_async
         await sync_to_async(ChatMessage.objects.create)(
             escrow_id=text_data_json["escrow_id"],
-            sender=text_data_json["sender_id"],
-            receiver=text_data_json["receiver_id"],
+            sender=sender,
+            receiver=receiver,
             message=message
         )
 

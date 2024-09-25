@@ -6,7 +6,7 @@ urlpatterns = [
     path('users/', views.getUsers),
     path('users/signup/', views.createUser),
     path('users/signin/', views.SignInUser),
-    path('users/forgetpassword/', views.forgetpassword),  # Added for forget password
+    path('users/forget_password/', views.forget_password),  # Added for forget password
     path('users/reset_password/', views.reset_password),  # Added for reset password
     path('users/send_otp_to_phone/', views.send_otp_to_phone),  # Added for sending OTP to phone
     path('users/send_otp_to_email/', views.send_otp_to_email),  # Added for sending OTP to email

@@ -69,7 +69,8 @@ class Card(models.Model):
         return f"{self.balance} - {self.card_number} - {self.email} - {self.tx_ref}"
 
 
-class Notification(models.Model):
+class Notifications(models.Model):
+    device_id = models.CharField(max_length=100, default='')
     customer_id = models.CharField(max_length=100, default='')
     topic = models.CharField(max_length=100, default='')
     message = models.CharField(max_length=500, )

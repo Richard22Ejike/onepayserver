@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from datetime import timedelta
 from pathlib import Path
+from decouple import config
 import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -80,7 +81,6 @@ WSGI_APPLICATION = 'bases.wsgi.application'
 
 ASGI_APPLICATION = 'bases.asgi.application'
 
-
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -91,8 +91,8 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgres://oneplugpay_user:wyP7GAbhrOBbVTLlDHKrOK3Q03setAlX@dpg-coti2kf109ks73al6ivg-a.frankfurt'
-                '-postgres.render.com/oneplugpay',
+        default='postgresql://oneplug_pay_database_5k04_user:lJoIvWoJHdfTQEVFrc16vJKRNc0wvUZx@dpg'
+                '-crq17rt6l47c73arsevg-a.frankfurt-postgres.render.com/oneplug_pay_database_5k04',
         conn_max_age=600,
         conn_health_checks=True,
     )
@@ -159,10 +159,11 @@ SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_USE_TLS = True
+
+EMAIL_BACKEND = config('EMAIL_BACKEND')
 EMAIL_USE_SSL = False
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_HOST_USER = 'richard.ekene@aun.edu.ng'
-EMAIL_HOST_PASSWORD = 'sjow jgxt utko wsss'
-EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST = config('EMAIL_HOST')
+EMAIL_HOST_USER = 'apikey'  # Your SendGrid API Key name
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')  # Your SendGrid API Key
+EMAIL_PORT = 25  # Use port 587 for TLS

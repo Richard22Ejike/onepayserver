@@ -1,5 +1,9 @@
-from datetime import timedelta
-
+import os
+import random
+import smtplib
+import string
+from datetime import timedelta, datetime
+from decouple import config
 import requests
 from django.db.models import Q
 from django.utils import timezone
@@ -16,10 +20,10 @@ import hmac
 import hashlib
 
 from transactions.models import Transaction
-from .keys import secret_key, WEBHOOK_SECRET_KEY
+from .keys import secret_key
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
-from .utils import send_email_to_user, GenerateOtp
+from .utils import send_email_to_user, GenerateOtp, send_sms
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.hashers import check_password
 
@@ -129,20 +133,36 @@ def getUser(request, pk):
     return Response(serializer.data)
 
 
+def generate_random_id(length, prefix=''):
+    characters = string.ascii_lowercase + string.digits
+    random_id = ''.join(random.choice(characters) for _ in range(length - len(prefix)))
+    return prefix + random_id
+
+
 @api_view(['POST'])
 def createUser(request):
     try:
         data = request.data
-        secret_key = "sk_live_65eedccca40a63e818c6cc5a65eedccca40a63e818c6cc5b"
 
+        # Fetch Flutterwave secret key from environment variables
+        secret_key = config('SECRETKEY')  # Using the environment variable SECRETKEY
+        print(secret_key)
+        print(secret_key)
+        # Convert DOB from dd/MM/yyyy to MM/dd/yyyy format
+        dob_str = data['dob']
+        try:
+            dob_obj = datetime.strptime(dob_str, '%d/%m/%Y')
+            dob = dob_obj.strftime('%m/%d/%Y')
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format for DOB. Please use dd/MM/yyyy format.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         # Check if the user already exists locally
         existing_user = User.objects.filter(
             Q(phone_number=data['phone_number']) | Q(email=data['email']) | Q(bvn=data['bvn'])
         ).first()
-        print(data['phone_number'])
-        print(data['email'])
-        print(data['bvn'])
+
         if existing_user:
             matched_fields = []
             if existing_user.phone_number == data['phone_number']:
@@ -151,220 +171,40 @@ def createUser(request):
                 matched_fields.append(f"email: {data['email']}")
             if existing_user.bvn == data['bvn']:
                 matched_fields.append(f"bvn: {data['bvn']}")
-
             matched_fields_str = ", ".join(matched_fields)
-            print(f"User already exists locally: {existing_user} matches {matched_fields_str}")
+            return Response({
+                'error': f'User with the provided phone number, email, or BVN already exists. Matches: {matched_fields_str}'},
+                status=status.HTTP_400_BAD_REQUEST)
 
-            return Response({'error': 'User with the provided phone number, email, or BVN already exists.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        # Make a request to the Blochq API to register the customer
-        url = "https://api.blochq.io/v1/customers"
+        # Call to register the virtual account using Flutterwave API
         payload = {
             "email": data['email'],
-            "phone_number": data['phone_number'],
-            "first_name": data['first_name'],
-            "last_name": data['last_name'],
+            "is_permanent": True,
             "bvn": data['bvn'],
-            "customer_type": data['customer_type']
+            "tx_ref": generate_random_id(17),  # You can generate or pass a unique reference
+            "phonenumber": data['phone_number'],
+            "firstname": data['first_name'],
+            "lastname": data['last_name'],
+            "narration": "Richard Ejike"  # You can modify the narration as needed
         }
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"
-        }
 
-        response = requests.post(url, json=payload, headers=headers)
+        flutterwave_response = requests.post(
+            'https://api.flutterwave.com/v3/virtual-account-numbers',
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {secret_key}'  # Using the secret key from the environment variable
+            },
+            json=payload
+        )
 
-        if response.status_code != 200:
-            error_message = response.json().get('message')
-            if error_message in [
-                'customer phone number already exist',
-                'customer bvn already exist',
-                'customer email already exist'
-            ]:
-                # If the customer already exists in Blochq, retrieve all customers
-                customer_url = "https://api.blochq.io/v1/customers"
-                customer_response = requests.get(customer_url, headers=headers)
+        if flutterwave_response.status_code != 200:
+            return Response({'error': f'{flutterwave_response.json()}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                if customer_response.status_code != 200:
-                    return Response({'error': customer_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        flutterwave_data = flutterwave_response.json()
 
-                customers_data = customer_response.json().get('data')
-                # Filter the customer based on provided data
-                customer_data = next((customer for customer in customers_data if
-                                      customer['phone_number'] == data['phone_number'] or customer['email'] == data[
-                                          'email'] or customer['bvn'] == data['bvn']), None)
 
-                if customer_data:
-                    print(f"Existing customer found: {customer_data}")
-                else:
-                    return Response({'error': 'Customer exists in Blochq but could not be found.'},
-                                    status=status.HTTP_404_NOT_FOUND)
-
-                if not customer_data:
-                    return Response({'error': 'Customer exists in Blochq but could not be found.'},
-                                    status=status.HTTP_404_NOT_FOUND)
-
-                # Retrieve account details
-                account_url = f"https://api.blochq.io/v1/accounts?customer_id={customer_data['id']}"
-                account_response = requests.get(account_url, headers=headers)
-                account_response_data = account_response.json()
-
-                if not account_response_data['data']:
-                    account_url = "https://api.blochq.io/v1/accounts"
-                    account_payload = {
-                        "customer_id": customer_data['id'],
-                        "preferred_bank": "Wema",
-                    }
-                    account_headers = {
-                        "accept": "application/json",
-                        "content-type": "application/json",
-                        "authorization": f"Bearer {secret_key}"  # Replace with your actual secret key
-                    }
-                    account_response = requests.post(account_url, json=account_payload, headers=account_headers)
-                    if account_response.status_code != 200:
-                        return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                    if account_response.status_code == 200:
-                        account_response_data = account_response.json()
-                        user_account_data = account_response_data.get('data')
-                        print(user_account_data)
-                        user = User.objects.create_user(
-                            first_name=data['first_name'],
-                            last_name=data['last_name'],
-                            phone_number=data['phone_number'],
-                            password=data['password'],
-                            email=data['email'],
-                            customer_type=data['customer_type'],
-                            bvn=data['bvn'],
-                            organization_id=customer_data.get('organization_id', ''),
-                            customer_id=customer_data.get('id', ''),
-                            account_id=account_response_data.get('id', ''),
-                            account_number=account_response_data.get('account_number', ''),
-                            bank_name=account_response_data.get('bank_name', '')
-                        )
-                        # Generate or get existing token for the user
-                        token = Token.objects.create(user=user)
-                        user_tokens = user.tokens()
-                        user.access_token = str(user_tokens.get('access'))
-                        user.refresh_token = str(user_tokens.get('refresh'))
-
-                        serializer = UserSerializer(user, many=False)
-                        return Response({'user': serializer.data,
-                                         'token': token.key,
-                                         'access_token': str(user_tokens.get('access')),
-                                         'refresh_token': str(user_tokens.get('refresh'))
-                                         })
-
-                user_account_data = account_response_data['data'][0]
-
-                # Create the user locally
-                user = User.objects.create_user(
-                    first_name=data['first_name'],
-                    last_name=data['last_name'],
-                    phone_number=data['phone_number'],
-                    password=data['password'],
-                    email=data['email'],
-                    customer_type=data['customer_type'],
-                    bvn=data['bvn'],
-                    organization_id=customer_data.get('organization_id', ''),
-                    customer_id=customer_data.get('id', ''),
-                    account_id=user_account_data.get('id', ''),
-                    account_number=user_account_data.get('account_number', ''),
-                    bank_name=user_account_data.get('bank_name', '')
-                )
-
-                # Generate or get existing token for the user
-                token, created = Token.objects.get_or_create(user=user)
-
-                user_tokens = user.tokens()
-                user.access_token = str(user_tokens.get('access'))
-                user.refresh_token = str(user_tokens.get('refresh'))
-
-                serializer = UserSerializer(user, many=False)
-                return Response({
-                    'user': serializer.data,
-                    'token': token.key,
-                    'access_token': str(user_tokens.get('access')),
-                    'refresh_token': str(user_tokens.get('refresh'))
-                })
-
-            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        account_url = "https://api.blochq.io/v1/accounts"
-        response_data = response.json()
-        user_data = response_data.get('data')
-        account_payload = {
-                "customer_id": user_data['id'],
-                "preferred_bank": "Wema",
-                "alias": "business",
-                "collection_rules": {
-                    "amount": 30000,
-                    "frequency": 2
-                }
-            }
-
-        account_response = requests.post(account_url, json=account_payload, headers=headers)
-
-        if account_response != 200:
-
-            # Check if the user has an account in Blochq
-            account_url = f"https://api.blochq.io/v1/accounts?customer_id={user_data['id']}"
-            account_response = requests.get(account_url, headers=headers)
-            account_response_data = account_response.json()
-
-            if not account_response_data['data']:
-                # Create an account if not exists
-                account_payload = {
-                    "customer_id": user_data['id'],
-                    "preferred_bank": "Wema",
-                    "alias": "business",
-                    "collection_rules": {
-                        "amount": 30000,
-                        "frequency": 2
-                    }
-                }
-
-                account_response = requests.post(account_url, json=account_payload, headers=headers)
-                if account_response.status_code != 200:
-                    return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-                account_response_data = account_response.json()
-                user_account_data = account_response_data.get('data')
-                account_response_data = account_response.json()
-                user_account_data = account_response_data.get('data')
-                user = User.objects.create_user(
-                    first_name=data['first_name'],
-                    last_name=data['last_name'],
-                    phone_number=data['phone_number'],
-                    password=data['password'],
-                    email=data['email'],
-                    customer_type=data['customer_type'],
-                    bvn=data['bvn'],
-                    organization_id=user_data.get('organization_id', ''),
-                    customer_id=user_data.get('id', ''),
-                    account_id=user_account_data.get('id', ''),
-                    account_number=user_account_data.get('account_number', ''),
-                    bank_name=user_account_data.get('bank_name', '')
-                )
-
-                # Generate or get existing token for the user
-                token, created = Token.objects.get_or_create(user=user)
-
-                user_tokens = user.tokens()
-                user.access_token = str(user_tokens.get('access'))
-                user.refresh_token = str(user_tokens.get('refresh'))
-
-                serializer = UserSerializer(user, many=False)
-                return Response({
-                    'user': serializer.data,
-                    'token': token.key,
-                    'access_token': str(user_tokens.get('access')),
-                    'refresh_token': str(user_tokens.get('refresh'))
-                })
-
-        # Create the user locally
-        account_response_data = account_response.json()
-        user_account_data = account_response_data.get('data')
+        # Create new user
         user = User.objects.create_user(
             first_name=data['first_name'],
             last_name=data['last_name'],
@@ -373,11 +213,11 @@ def createUser(request):
             email=data['email'],
             customer_type=data['customer_type'],
             bvn=data['bvn'],
-            organization_id=user_data.get('organization_id', ''),
-            customer_id=user_data.get('id', ''),
-            account_id=user_account_data.get('id', ''),
-            account_number=user_account_data.get('account_number', ''),
-            bank_name=user_account_data.get('bank_name', '')
+            bank_name=flutterwave_data['data']['bank_name'],
+            bank_pin='555555',
+            account_id=generate_random_id(17),
+            account_number=flutterwave_data['data']['account_number'],
+            customer_id=flutterwave_data['data']['flw_ref'],
         )
 
         # Generate or get existing token for the user
@@ -392,7 +232,8 @@ def createUser(request):
             'user': serializer.data,
             'token': token.key,
             'access_token': str(user_tokens.get('access')),
-            'refresh_token': str(user_tokens.get('refresh'))
+            'refresh_token': str(user_tokens.get('refresh')),
+            'virtual_account_data': flutterwave_data['data']
         })
 
     except KeyError as e:
@@ -419,77 +260,32 @@ def SignInUser(request):
     phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
     password = data.get('password')
     user = User.objects.get(phone_number=phone_number)
-    print(user.customer_id)
-    url = f"https://api.blochq.io/v1/customers/{user.customer_id}"
 
-    payload = {"email": user.email}
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
-    }
+    # Authenticate user
+    if not check_password(password, user.password):
+        return Response({'message': 'bad credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        token, _ = Token.objects.get_or_create(user=user)
+    except Exception as e:
+        return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    response = requests.put(url, json=payload, headers=headers)
-    if response.status_code != 200:
-        # If the request was not successful, return an error response
-        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    if response.status_code == 200:
-        response_data = response.json()
-        user_data = response_data.get('data')
-        print(response_data.get('data'))
-        print(user_data.get('customer_id', ''))
-        account_url = f"https://api.blochq.io/v1/accounts/customers/accounts/{user_data.get('id', '')}"
-        account_payload = {"accountID": "661d1dc19e2f2a169cffd64f"}
-        account_headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"  # Replace with your actual secret key
-        }
-        account_response = requests.get(account_url, json=account_payload, headers=account_headers)
-        if account_response.status_code != 200:
-            return Response({'error': account_response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        if account_response.status_code == 200:
-            account_response_data = account_response.json()
-            account_data = account_response_data.get('data', [{}])[-1]
-            external_account = account_data.get('external_account', {})
-            print(account_response_data)
-            print(external_account)
-            print(external_account.get('data', [{}])[-1].get('balance', ''))
-            print(external_account.get('account_number', ''))
-            print(account_response_data.get('data', [{}])[-1].get('id', ''))
-            user.account_id = account_response_data.get('data', [{}])[-1].get('id', '')
-            user.account_number = external_account.get('account_number', '')
-            user.bank_name = external_account.get('bank_name', '')
-            user.balance = account_response_data.get('data', [{}])[-1].get('balance', '')
-            user.kyc_tier = account_response_data.get('data', [{}])[-1].get('kyc_tier', '')
-            user.group = user_data.get('group', '')
-            user.customer_id = user_data.get('id', '')
-            user.organization_id = user_data.get('organization_id', '')
-            user.save()
-        # Authenticate user
-        if not check_password(password, user.password):
-            return Response({'message': 'bad credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-        try:
-            token, _ = Token.objects.get_or_create(user=user)
-        except Exception as e:
-            return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    user_tokens = user.tokens()
+    user.device_id = data.get('device_id')
+    user.save()
+    user.access_token = str(user_tokens.get('access'))
+    user.refresh_token = str(user_tokens.get('refresh'))
 
-        user_tokens = user.tokens()
-        user.access_token = str(user_tokens.get('access'))
-        user.refresh_token = str(user_tokens.get('refresh'))
-
-        serializer = UserSerializer(user, many=False)
-        print(serializer.data)
-        return Response({'user': serializer.data,
-                         })
+    serializer = UserSerializer(user, many=False)
+    print(serializer.data)
+    return Response({'user': serializer.data,
+                     })
 
 
 @api_view(['POST'])
-def forgetpassword(request):
+def forget_password(request):
+    print('email')
     data = request.data
     email = data.get('email')
-
-    # Check if a user with the provided email exists
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
@@ -497,12 +293,21 @@ def forgetpassword(request):
 
     # Generate an OTP (One-Time Passcode)
     otp_code = GenerateOtp()
+    print(otp_code)
+    subject = "One time Passcode for email Verification"
+    email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
 
-    # Save the OTP in the OneTimePassword model
-    OneTimePassword.objects.create(user=user, code=otp_code)
+    try:
+        # Try to create a new OTP entry for the user
+        OneTimePassword.objects.create(user=user, code=otp_code)
+    except IntegrityError:
+        # If an entry already exists, update the existing entry with the new OTP
+        otp_entry = OneTimePassword.objects.get(user=user)
+        otp_entry.code = otp_code
+        otp_entry.save()
 
-    # Send the OTP to the user via email
-    send_email_to_user(email, otp_code)
+    # # Send the OTP to the user via email
+    send_email_to_user(email, email_body, subject)
 
     return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
 
@@ -513,6 +318,9 @@ def reset_password(request):
     email = data.get('email')
     otp = data.get('otp')  # OTP entered by the user
     new_password = data.get('new_password')
+    print(email)
+    print(otp)  # OTP entered by the user
+    print(new_password)
 
     # Check if a user with the provided email exists
     try:
@@ -541,6 +349,37 @@ def reset_password(request):
 
 
 @api_view(['POST'])
+def send_otp_to_email(request):
+    data = request.data
+    email = data.get('email')
+
+    # Check if a user with the provided email exists
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Generate an OTP (One-Time Passcode)
+    otp_code = GenerateOtp()
+    subject = "One time Passcode for email Verification"
+    email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+
+    try:
+        # Try to create a new OTP entry for the user
+        OneTimePassword.objects.create(user=user, code=otp_code)
+    except IntegrityError:
+        # If an entry already exists, update the existing entry with the new OTP
+        otp_entry = OneTimePassword.objects.get(user=user)
+        otp_entry.code = otp_code
+        otp_entry.save()
+
+    # # Send the OTP to the user via email
+    send_email_to_user(email, email_body, subject)
+
+    return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
 def send_otp_to_phone(request):
     data = request.data
     phone_number = data.get('phone_number')
@@ -548,32 +387,19 @@ def send_otp_to_phone(request):
     # Generate an OTP (One-Time Passcode)
     otp_code = GenerateOtp()
 
-    # Save the OTP in the OneTimePassword model
-    OneTimeOtp.objects.create(key=phone_number, code=otp_code)
+    # Send the OTP via SMS
+    send_sms(sms=f'Dear Customer, ${otp_code} is the One Time Password ( OTP ) for your login.', to=phone_number,
+             api_key='TLkdeoFa2SDh2gElzd2AG7r0Lua4KDigbS7Q9EPm9Vt5VO6zdLDWT7a5k0DaU7')
+
+    # Update the OTP if the phone number already exists, otherwise create a new entry
+    OneTimeOtp.objects.update_or_create(
+        key=phone_number,
+        defaults={'code': otp_code, 'created_at': timezone.now()}
+    )
 
     print(otp_code)
 
-    # Send the OTP to the user via SMS (you need to implement this)
-    # Example: send_sms_to_user(phone_number, otp_code)
-
     return Response({'message': 'OTP sent to your phone'}, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-def send_otp_to_email(request):
-    data = request.data
-    email = data.get('email')
-
-    # Generate an OTP (One-Time Passcode)
-    otp_code = GenerateOtp()
-
-    # Save the OTP in the OneTimePassword model
-    OneTimeOtp.objects.create(key=email, code=otp_code)
-
-    # Send the OTP to the user via email
-    send_email_to_user(email, otp_code)
-
-    return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -583,21 +409,29 @@ def otp_verified(request):
     try:
         otp_code_objs = OneTimeOtp.objects.filter(key=key)
 
+        if not otp_code_objs.exists():
+            return Response({
+                'message': 'passcode not provided'
+            }, status=status.HTTP_404_NOT_FOUND)
+
         for otp_code_obj in otp_code_objs:
-            print(otpcode)
             otp = otp_code_obj.code
-            print(otp)
+            created_time = otp_code_obj.created_at  # assuming you have a created_at field
+
+            # Check if the OTP was created within the last 10 minutes
+            if timezone.now() - created_time > timedelta(minutes=10):
+                return Response({
+                    'message': 'OTP code has expired'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             if otp == otpcode:
                 return Response({
-                    'message': 'account email verified successfully'
+                    'message': 'account phone number verified successfully'
                 }, status=status.HTTP_200_OK)
-            return Response({
-                'message': 'code is invalid user already verified'
-            }, status=status.HTTP_204_NO_CONTENT)
 
         return Response({
-            'message': 'passcode not provided'
-        }, status=status.HTTP_404_NOT_FOUND)
+            'message': 'code is invalid'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     except OneTimeOtp.DoesNotExist:
         return Response({'message': "passcode not provided"}, status=status.HTTP_404_NOT_FOUND)
@@ -606,34 +440,42 @@ def otp_verified(request):
 @api_view(['POST'])
 def password_reset_otp_verified(request):
     otpcode = request.data.get('otp')
+    email = request.data.get('email')
+    print(email)
     try:
+        print(otpcode)
         user_code_obj = OneTimePassword.objects.get(code=otpcode)
+        print(email)
         user = user_code_obj.user
-        if not user.is_verified:
-            user.is_verified = True
-            user.save()
+        print(user.email)
+        if user.email == email:
             return Response({
-                'message': 'account email verified successfully'
+                'message': 'reset password otp verified successfully'
             }, status=status.HTTP_200_OK)
         return Response({
-            'message': 'code is invalid user already verified'
+            'message': 'code is invalid'
         }, status=status.HTTP_204_NO_CONTENT)
     except OneTimePassword.DoesNotExist:
-        return Response({'message': "passcode not provided"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'message': "passcode not in database"}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['PUT'])
 def updateUser(request, pk):
     data = request.data
     user = User.objects.get(customer_id=pk)
-    serializer = UserSerializer(user, data=data)
+    key = data.get('key', '')
+
+    if key == '1':
+        user.first_name = data.get('firstName', user.first_name)
+        user.last_name = data.get('lastName', user.last_name)
+        user.image = data.get('image', user.image)
+    else:
+        user.email = data.get('email', user.email)
+
+    serializer = UserSerializer(user, data=data, partial=True)  # Use partial to allow partial updates
 
     if serializer.is_valid():
-        user.email = 'am.joshuajohnson@gmail.com'
-        user.phone_number = '07034534116'
         user.save()
-
-        # Return serialized data
         return Response(serializer.data, status=status.HTTP_200_OK)
     else:
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -814,68 +656,63 @@ def SetPin(request, pk):
 @csrf_exempt
 @api_view(['POST'])
 def webhook_listener(request):
-    # Retrieve the X-Bloc-Webhook signature from the request headers
-    signature = request.headers.get('X-Bloc-Webhook')
+    # Retrieve the Flutterwave secret hash from the environment variables
+    secret_hash = config("FLW_SECRET_HASH")
 
-    # Compute the expected signature using your webhook secret and the request body
-    expected_signature = hmac.new(WEBHOOK_SECRET_KEY.encode('utf-8'), request.body, hashlib.sha256).hexdigest()
+    # Retrieve the 'verifi-hash' signature from the request headers
+    signature = request.headers.get("verifi-hash")
 
-    # Compare the computed signature with the provided signature
-    if signature != expected_signature:
-        return Response({'error': 'Invalid signature'}, status=401)
+    # Check if the signature is valid
+    if signature is None or (signature != secret_hash):
+        # If the request isn't from Flutterwave, return a 401 Unauthorized response
+        return Response(status=401)
 
-    # Parse the request data
+    # Parse the request payload
     try:
-        event = request.data.get('event')
-        data = request.data.get('data')
+        payload = json.loads(request.body)
     except json.JSONDecodeError:
         return Response({'error': 'Invalid payload'}, status=400)
 
-    # Process the event
-    if event == 'transaction.new':
-        handle_transaction_new(data)
-    elif event == 'transaction.updated':
-        handle_transaction_updated(data)
-    elif event == 'account.created':
-        handle_account_created(data)
-    # Add additional event handlers as needed
+    # It's a good idea to log the received events
+    log_event(payload)
+
+    # Retrieve the event type from the payload
+    event = payload.get("event")
+    data = payload.get("data")
+
+    # Handle different event types
+    if event == 'charge.completed':
+        handle_charge_completed(data)
+    elif event == 'transfer.success':
+        handle_transfer_success(data)
+    elif event == 'transfer.failed':
+        handle_transfer_failed(data)
     else:
+        # Unhandled event type
         return Response({'error': 'Unhandled event'}, status=400)
 
-    return Response({'status': 'success'}, status=200)
+    # Return a success response to Flutterwave
+    return Response(status=200)
 
 
-def handle_transaction_new(data):
-    try:
-        previous_account_balance = data['previous_account_balance']
-        current_account_balance = data['current_account_balance']
-        amount = data['amount'] / 100
-
-        if current_account_balance > previous_account_balance or previous_account_balance is None:
-            Transaction.objects.create(
-                receiver_name=data['meta_data'].get('sender_account_name', ''),
-                amount=amount,
-                bank_code=data.get('bank_code', ''),
-                bank=data.get('bank', ''),
-                account_number=data['account_number'],
-                customer_id=data['customer_id'],
-                narration=data.get('narration', ''),
-                account_id=data['account_id'],
-                reference=data['reference'],
-                credit=True,  # Indicating it's a credit transaction
-            )
-    except KeyError as e:
-        print(f"Missing expected data key: {e}")
-    except Exception as e:
-        print(f"Error processing transaction: {e}")
-    print(f"Transaction New: {data}")
+def log_event(payload):
+    # Log the event for debugging or future reference
+    print(f"Received webhook payload: {payload}")
 
 
-def handle_transaction_updated(data):
-    # Process the transaction.updated event
-    print(f"Transaction Updated: {data}")
+def handle_charge_completed(data):
+    # Process a successful charge (e.g., payment)
+    print(f"Charge Completed: {data}")
+    # You can save the transaction to your database or perform other actions here
 
 
-def handle_account_created(data):
-    # Process the account.created event
-    print(f"Account Created: {data}")
+def handle_transfer_success(data):
+    # Process a successful transfer
+    print(f"Transfer Successful: {data}")
+    # You can save the transaction to your database or perform other actions here
+
+
+def handle_transfer_failed(data):
+    # Process a failed transfer
+    print(f"Transfer Failed: {data}")
+    # You can notify the user or log the failure
