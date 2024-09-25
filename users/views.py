@@ -663,7 +663,7 @@ def webhook_listener(request):
     print(f"Secret Hash: {secret_hash}")
 
     # Retrieve the 'verifi-hash' signature from the request headers
-    signature = request.headers.get("verifi-hash")
+    signature = request.headers.get("Verif-Hash")
     print(f"Received Signature: {signature}")
 
     # Check if the signature is valid
