@@ -1,6 +1,7 @@
 import os
 import random
 import smtplib
+import onesignal
 import string
 from datetime import timedelta, datetime
 from decouple import config
@@ -8,6 +9,8 @@ import requests
 from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from onesignal.api.default_api import DefaultApi
+from onesignal.model.notification import Notification
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -19,14 +22,17 @@ import json
 import hmac
 import hashlib
 
-from transactions.models import Transaction
+from transactions.models import Transaction, Notifications
 from .keys import secret_key
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp, send_sms
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.hashers import check_password
-
+configuration = onesignal.Configuration(
+    app_key="56618190-490a-4dc6-af2e-71ea67697f99",
+    user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
+)
 
 @api_view(['GET'])
 def getroutes(request):
@@ -75,44 +81,207 @@ def getUsers(request):
 @api_view(['GET'])
 def addUsers(request):
     data = [
-        {
-            "id": 143,
-            "password": "pbkdf2_sha256$390000$gUKq6vkgVx8pdNEH0XzuOG$JOrPAwSOXLK0gzXF96WaSSRMFBYpt4P8sb0cJQI7iow=",
-            "last_login": "2024-04-08T00:30:33.927046Z",
-            "username": "sgsdgdggsfgdg",  # Set default value here
-            "email": "richard.ekene22@outlook.com",
-            "first_name": "Richard",
-            "last_name": "Ejike",
-            "phone_number": "09055444489",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "661d07649e2f2a169cffd536",
-            "account_id": "661d1dc19e2f2a169cffd64f",
-            "organization_id": "65eedccca40a63e818c6cc59",
-            "customer_type": "Personal",
-            "bvn": "22398644895",
-            "account_number": "8548030507",
-            "escrow_fund": 0.0,
-            "bank_name": "WEMA BANK",
-            "updated": "2024-05-05T10:55:51.988586Z",
-            "created": "2024-04-15T11:48:23.475051Z",
-            "bank_pin": "sgdsfgs",  # Set default value here
-            "balance": 0.0,
-            "street": "sfgdfgsg",  # Set default value here
-            "city": "sgfsdx",  # Set default value here
-            "state": "sgfsgdf",  # Set default value here
-            "country": "dsfsgs",  # Set default value here
-            "postal_code": "sgsgdsff",  # Set default value here
-            "access_token": "gdasdgdf",  # Set default value here
-            "refresh_token": "hvhmfj",  # Set default value here
-            "kyc_tier": 0,
-            "groups": [],
-            "user_permissions": []
-        }
-    ]
+    {
+        "id": 145,
+        "password": "pbkdf2_sha256$600000$R63OvhatyRl2Cd1YuQmxaI$LGeU84YLtn91NHUZg22j1q/UFGxGtuH2c3V5vbESuuc=",
+        "last_login": None,
+        "username": "",
+        "email": "ekene@mail.com",
+        "first_name": "richard",
+        "last_name": "ekeve",
+        "phone_number": "09055555549",
+        "image": "",
+        "is_staff": False,
+        "is_superuser": False,
+        "is_active": False,
+        "is_verified": False,
+        "status": False,
+        "customer_id": "aklbtmcc1v98o57ot",
+        "account_id": "p7v49tstxphkm102x",
+        "organization_id": "",
+        "customer_type": "Personal",
+        "bvn": "213278980998",
+        "account_number": "2201302678",
+        "escrow_fund": 0.0,
+        "bank_name": "GTBank",
+        "updated": "2024-07-19T19:57:20.996714Z",
+        "created": "2024-07-16T16:18:02.930931Z",
+        "bank_pin": "555555",
+        "balance": 2055000.0,
+        "device_id": "da09401e-c403-49f7-a6fe-bfa58aacb326",
+        "street": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "access_token": "",
+        "refresh_token": "",
+        "notification_number": 0,
+        "kyc_tier": 0,
+        "groups": [],
+        "user_permissions": []
+    },
+    {
+        "id": 144,
+        "password": "pbkdf2_sha256$600000$MFQDfO4rnPzKJN5baYPmPB$DnkeHGAyRJPXvKsFy6VpbRzvhLzURyLVet1jvSb2+38=",
+        "last_login": None,
+        "username": "",
+        "email": "richard.ekene22@oulook.com",
+        "first_name": "richard",
+        "last_name": "ejike",
+        "phone_number": "08055444489",
+        "image": "",
+        "is_staff": False,
+        "is_superuser": False,
+        "is_active": False,
+        "is_verified": False,
+        "status": False,
+        "customer_id": "ubfhbks1axy4uy7y1",
+        "account_id": "nt9kpdi28ynndkhfi",
+        "organization_id": "",
+        "customer_type": "Personal",
+        "bvn": "2201309224",
+        "account_number": "2201302456",
+        "escrow_fund": 0.0,
+        "bank_name": "GTBank",
+        "updated": "2024-07-27T08:18:40.010371Z",
+        "created": "2024-07-16T15:31:14.502190Z",
+        "bank_pin": "555555",
+        "balance": 1945000.0,
+        "device_id": "e312410a-f6d5-4f95-b177-c0c2204edbc0",
+        "street": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "access_token": "",
+        "refresh_token": "",
+        "notification_number": 0,
+        "kyc_tier": 0,
+        "groups": [],
+        "user_permissions": []
+    },
+    {
+        "id": 146,
+        "password": "pbkdf2_sha256$600000$0AohaqTz5val3xIab1AyYg$2rWN5P/H7v+od6Pz3AZPD2wjz86SPQdRi9kaRVKsBjM=",
+        "last_login": None,
+        "username": "",
+        "email": "richard.ekene22@outlook.co",
+        "first_name": "richard",
+        "last_name": "Ejike",
+        "phone_number": "09055444488",
+        "image": "",
+        "is_staff": False,
+        "is_superuser": False,
+        "is_active": False,
+        "is_verified": False,
+        "status": False,
+        "customer_id": "GTBT6JB3K",
+        "account_id": "qc2tpbtwkris8jeys",
+        "organization_id": "",
+        "customer_type": "Personal",
+        "bvn": "22398644894",
+        "account_number": "0714152896",
+        "escrow_fund": 0.0,
+        "bank_name": "GTBank",
+        "updated": "2024-08-14T16:34:48.525901Z",
+        "created": "2024-08-14T16:34:48.525901Z",
+        "bank_pin": "555555",
+        "balance": 0.0,
+        "device_id": "",
+        "street": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "access_token": "",
+        "refresh_token": "",
+        "notification_number": 0,
+        "kyc_tier": 0,
+        "groups": [],
+        "user_permissions": []
+    },
+    {
+        "id": 147,
+        "password": "pbkdf2_sha256$600000$nTyilMYPZk1Ak2ZJG93DDI$d3HSv7uRkOOSIXMDYHXSnSNCtBfsOgq3JKFH/xoiCmY=",
+        "last_login": None,
+        "username": "",
+        "email": "richard.ekene22@outlook.c",
+        "first_name": "richard",
+        "last_name": "Ejike",
+        "phone_number": "09055444480",
+        "image": "",
+        "is_staff": False,
+        "is_superuser": False,
+        "is_active": False,
+        "is_verified": False,
+        "status": False,
+        "customer_id": "GTBT6JB3K",
+        "account_id": "rkuhuef7g3uuwofbw",
+        "organization_id": "",
+        "customer_type": "Personal",
+        "bvn": "22398644800",
+        "account_number": "0714152896",
+        "escrow_fund": 0.0,
+        "bank_name": "GTBank",
+        "updated": "2024-08-14T16:48:56.445999Z",
+        "created": "2024-08-14T16:48:56.445999Z",
+        "bank_pin": "555555",
+        "balance": 0.0,
+        "device_id": "",
+        "street": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "access_token": "",
+        "refresh_token": "",
+        "notification_number": 0,
+        "kyc_tier": 0,
+        "groups": [],
+        "user_permissions": []
+    },
+    {
+        "id": 148,
+        "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
+        "last_login": None,
+        "username": "",
+        "email": "richard.ekene22@outlook.com",
+        "first_name": "Example",
+        "last_name": "Ejike",
+        "phone_number": "09055444489",
+        "image": "",
+        "is_staff": False,
+        "is_superuser": False,
+        "is_active": False,
+        "is_verified": False,
+        "status": False,
+        "customer_id": "FLW-f75719ff079f4b7684fe7e2238829771",
+        "account_id": "vcr4btssh2px4j4nz",
+        "organization_id": "",
+        "customer_type": "personal",
+        "bvn": "22398644895",
+        "account_number": "8548510800",
+        "escrow_fund": 0.0,
+        "bank_name": "WEMA BANK",
+        "updated": "2024-09-23T14:50:28.505760Z",
+        "created": "2024-09-23T14:50:28.505760Z",
+        "bank_pin": "555555",
+        "balance": 0.0,
+        "device_id": "",
+        "street": "",
+        "city": "",
+        "state": "",
+        "country": "",
+        "postal_code": "",
+        "access_token": "",
+        "refresh_token": "",
+        "notification_number": 0,
+        "kyc_tier": 0,
+        "groups": [],
+        "user_permissions": []
+    }
+]
 
     added_users = []
     for user_data in data:
@@ -708,7 +877,57 @@ def log_event(payload):
 def handle_charge_completed(data):
     # Process a successful charge (e.g., payment)
     print(f"Charge Completed: {data}")
-    # You can save the transaction to your database or perform other actions here
+
+    # Extract phone number from the customer data
+    customer_phone = data.get("customer", {}).get("phone_number")
+    amount = data.get("charged_amount")
+
+    if customer_phone and amount:
+        try:
+            # Find the user with the given phone number
+            user = User.objects.get(phone_number=customer_phone)
+
+            # Add the charged amount to the user's account balance
+            user.balance += amount
+            user.save()
+            print(f"Updated {user.first_name}'s balance to {user.balance}")
+
+            # Send a notification to the user using OneSignal
+            send_notification(user, amount, data)
+
+            # Log the notification in the database
+            Notifications.objects.create(
+                device_id=user.device_id,
+                customer_id=user.customer_id,
+                topic='Charge Completed',
+                message=f'You have received {amount} NGN from {user.first_name}.'
+            )
+        except User.DoesNotExist:
+            print(f"User with phone number {customer_phone} does not exist.")
+    else:
+        print("Phone number or amount missing in the webhook data.")
+
+
+def send_notification(receiving_user, amount, data):
+    # OneSignal Configuration
+ # Ensure this is set in your Django settings
+
+    # Initialize the OneSignal API client
+    with onesignal.ApiClient(configuration) as api_client:
+        # Create an instance of the API class
+        api_instance = DefaultApi(api_client)
+        notification = Notification(
+            app_id='56618190-490a-4dc6-af2e-71ea67697f99',
+            include_player_ids=[receiving_user.device_id],  # Make sure the user has a device ID
+            contents={"en": f'You have received {amount} NGN from {data.get("narration", "someone")}.'}
+        )
+
+        try:
+            # Send notification
+            api_response = api_instance.create_notification(notification)
+            print(api_response)
+        except onesignal.ApiException as e:
+            print(f"Exception when calling DefaultApi->create_notification: {e}")
 
 
 def handle_transfer_success(data):

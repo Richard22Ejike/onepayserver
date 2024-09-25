@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('', views.getroutes),
     path('users/', views.getUsers),
+    path('users/addUsers',views.addUsers),
     path('users/signup/', views.createUser),
     path('users/signin/', views.SignInUser),
     path('users/forget_password/', views.forget_password),  # Added for forget password
