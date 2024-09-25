@@ -659,9 +659,11 @@ def webhook_listener(request):
     print('connected')
     # Retrieve the Flutterwave secret hash from the environment variables
     secret_hash = config("FLW_SECRET_HASH")
+    print(f"Secret Hash: {secret_hash}")
 
     # Retrieve the 'verifi-hash' signature from the request headers
     signature = request.headers.get("verifi-hash")
+    print(f"Received Signature: {signature}")
 
     # Check if the signature is valid
     if signature is None or (signature != secret_hash):
