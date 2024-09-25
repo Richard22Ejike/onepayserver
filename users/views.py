@@ -677,7 +677,7 @@ def webhook_listener(request):
     # It's a good idea to log the received events
     log_event(payload)
     print('connected')
-
+    print(payload)
     # Retrieve the event type from the payload
     event = payload.get("event")
     data = payload.get("data")
