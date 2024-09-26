@@ -2,6 +2,7 @@ from datetime import date
 
 import onesignal
 import requests
+from decouple import config
 from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404
@@ -13,7 +14,6 @@ from rest_framework.response import Response
 from transactions.models import Transaction, PayBill, PaymentLink, Card, Notifications, Escrow, ChatMessage
 from transactions.serializers import TransactionSerializer, PayBillSerializer, PaymentLinkSerializer, CardSerializer, \
     NotificationSerializer, EscrowSerializer, ChatSerializer
-from users.keys import secret_key
 from users.models import User
 from users.serializers import UserSerializer
 from users.utils import send_email_to_user
@@ -30,7 +30,7 @@ configuration = onesignal.Configuration(
     user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
 )
 
-
+secret_key = config('SECRETKEY')
 
 
 # Bill Payments
