@@ -23,7 +23,6 @@ import hmac
 import hashlib
 
 from transactions.models import Transaction, Notifications
-from .keys import secret_key
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp, send_sms
@@ -684,7 +683,7 @@ def updateUserToKYC1(request, pk):
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
+
     }
 
     response = requests.put(url, json=payload, headers=headers)
@@ -743,7 +742,7 @@ def updateUserToKYC2v2(request, pk):
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
+
     }
 
     response = requests.put(url, json=payload, headers=headers)
@@ -774,7 +773,7 @@ def updateUserToKYC3(request, pk):
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
+
     }
 
     response = requests.put(url, json=payload, headers=headers)

@@ -25,6 +25,8 @@ from rest_framework.request import Request
 from channels.generic.websocket import WebsocketConsumer
 import json
 
+from users.views import generate_random_id
+
 configuration = onesignal.Configuration(
     app_key="56618190-490a-4dc6-af2e-71ea67697f99",
     user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
@@ -97,7 +99,7 @@ def makeInternalTransfer(request, pk):
     if data.get('pin') != user.bank_pin:
         return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
 
-    amount = data['amount'] * 100
+    amount = data['amount']
     to_account_number = data['account_number']
     print(to_account_number)
 
@@ -224,6 +226,7 @@ def makeExternalTransfer(request, pk):
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         response_data = response.json()
+        print(response.status_code)
         if response.status_code == 200 and response_data['status'] == 'success':
             transaction_data = response_data['data']
             bill = Transaction.objects.create(
@@ -793,31 +796,31 @@ def getPaymentLinks(request, pk):
 @api_view(['POST'])
 def CreatePaymentLink(request):
     data = request.data
-    url = "https://sandbox-api-d.squadco.com/payment_link/otp"
+    url = "https://api.flutterwave.com/v3/payments"
 
     payload = {
-        "name": data['name'],
-        "hash": data['hash'],
-        "link_status": data['link_status'],
-        "expire_by": data['expire_by'],
-        "amounts": [
-            {
-                "amount": data['amount'],
-                "currency_id": data['currency']
-            }
-        ],
-        "description": data['description'],
-        "redirect_link": data['redirect_link'],
-        "return_msg": data['return_msg']
+        "tx_ref": generate_random_id(17),  # Replace with your transaction reference
+        "amount": data['amount'],
+        "currency": 'NGN',
+        "redirect_url": 'https://flutterwave.com/ng',
+        "customer": {
+            "email": data['email'],
+            "phone_number": data['phone_number'],
+            "name": data['name']
+        },
+        "customizations": {
+            "title": 'Oneplug',
+            "logo": ''
+        }
     }
 
     headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
+        "Authorization": f"Bearer {secret_key}",  # Replace with your Flutterwave secret key
+        "Content-Type": "application/json"
     }
 
     response = requests.post(url, json=payload, headers=headers)
+
     if response.status_code != 200:
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -825,14 +828,16 @@ def CreatePaymentLink(request):
         response_data = response.json()
         print(response_data)
         user_data = response_data.get('data')
+
+        # Assuming PaymentLink is a Django model where you store payment link details
         link = PaymentLink.objects.create(
-            link_id=user_data.get('merchant_id', ''),
-            link_url=user_data.get('redirect_link', ''),
-            customer_id=data['customer_id'],
-            name=user_data.get('name', ''),
-            description=user_data.get('description', ''),
-            amount=user_data['amounts'][0]['amount'],
-            currency=user_data['amounts'][0]['currency_id'],
+            link_id=user_data.get('tx_ref', ''),  # Transaction reference
+            link_url=user_data.get('redirect_url', ''),  # Redirect URL
+            customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
+            name=user_data.get('customer', {}).get('name', ''),
+            description=data.get('description', ''),  # Add description if needed
+            amount=data['amount'],  # Payment amount
+            currency=user_data['currency'],  # Currency
         )
 
         serializer = PaymentLinkSerializer(link, many=False)
