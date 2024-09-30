@@ -89,23 +89,23 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': dj_database_url.config(
-#         default='postgresql://oneplug_pay_database_5k04_user:lJoIvWoJHdfTQEVFrc16vJKRNc0wvUZx@dpg'
-#                 '-crq17rt6l47c73arsevg-a.frankfurt-postgres.render.com/oneplug_pay_database_5k04',
-#         conn_max_age=600,
-#         conn_health_checks=True,
-#     )
-# }
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'test1',
-        'USER': 'onepluspay',
-        'PASSWORD': 'onepluspay'
-    }
+    'default': dj_database_url.config(
+        default='postgresql://oneplug_pay_database_5k04_user:lJoIvWoJHdfTQEVFrc16vJKRNc0wvUZx@dpg'
+                '-crq17rt6l47c73arsevg-a.frankfurt-postgres.render.com/oneplug_pay_database_5k04',
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'test1',
+#         'USER': 'onepluspay',
+#         'PASSWORD': 'onepluspay'
+#     }
+# }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
