@@ -86,7 +86,7 @@ class PaymentLink(models.Model):
     environment = models.CharField(max_length=10, default='')
     description = models.CharField(max_length=255, default='')
     name = models.CharField(max_length=255, default='')
-    link_id = models.CharField(max_length=8, default='')
+    link_id = models.CharField(max_length=255, default='')
     country = models.CharField(max_length=100, blank=True, default='')
     currency = models.CharField(max_length=10, default='')
     link_url = models.URLField(default='')

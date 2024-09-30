@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-6dwsxiz_t4nosfs+f9yzqobr(_cy5_ah&@1ho2jk2&u=*s1^p4
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*', '127.0.0.1', '192.168.43.158']
+ALLOWED_HOSTS = ['*', '127.0.0.1', '192.168.43.158', 'localhost']
 
 # Application definition
 
@@ -159,7 +159,6 @@ SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
-
 EMAIL_BACKEND = config('EMAIL_BACKEND')
 EMAIL_USE_SSL = False
 EMAIL_USE_TLS = True
@@ -167,3 +166,29 @@ EMAIL_HOST = config('EMAIL_HOST')
 EMAIL_HOST_USER = 'apikey'  # Your SendGrid API Key name
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')  # Your SendGrid API Key
 EMAIL_PORT = 25  # Use port 587 for TLS
+
+# Add your frontend's origin in CORS_ALLOWED_ORIGINS
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',  # Add your frontend URL here
+    # You can add more allowed origins as needed
+]
+
+# Enable support for credentials (cookies, etc.)
+CORS_ALLOW_CREDENTIALS = True
+
+# If you want to allow all headers, you can specify:
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'authorization',
+    'x-csrftoken',
+]
+
+CORS_ORIGIN_WHITELIST = [
+    'http://localhost:3000',
+]
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+]
+
+
+# Remove `CORS_ALLOW_ALL_ORIGINS = True` as it's not compatible with credentials.

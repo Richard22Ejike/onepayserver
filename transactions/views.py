@@ -1,5 +1,5 @@
 from datetime import date
-
+from django.views.decorators.csrf import csrf_exempt
 import onesignal
 import requests
 from decouple import config
@@ -793,8 +793,67 @@ def getPaymentLinks(request, pk):
     return Response(serializer.data)
 
 
+@api_view(['GET'])
+def getPaymentLink(request, pk):
+    paymentLink = PaymentLink.objects.get(link_id=pk)
+    serializer = PaymentLinkSerializer(paymentLink, many=False)
+    return Response(serializer.data)
+
+
 @api_view(['POST'])
 def CreatePaymentLink(request):
+    data = request.data
+    # url = "https://api.flutterwave.com/v3/payments"
+    #
+    # payload = {
+    #     "tx_ref": generate_random_id(17),  # Replace with your transaction reference
+    #     "amount": data['amount'],
+    #     "currency": 'NGN',
+    #     "redirect_url": 'https://flutterwave.com/ng',
+    #     "customer": {
+    #         "email": data['email'],
+    #         "phone_number": data['phone_number'],
+    #         "name": data['name']
+    #     },
+    #     "customizations": {
+    #         "title": 'Oneplug',
+    #         "logo": ''
+    #     }
+    # }
+    #
+    # headers = {
+    #     "Authorization": f"Bearer {secret_key}",  # Replace with your Flutterwave secret key
+    #     "Content-Type": "application/json"
+    # }
+    #
+    # response = requests.post(url, json=payload, headers=headers)
+    #
+    # if response.status_code != 200:
+    #     return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #
+    # if response.status_code == 200:
+    #     response_data = response.json()
+    #     print(response_data)
+    #     user_data = response_data.get('data')
+    #
+    #     # Assuming PaymentLink is a Django model where you store payment link details
+    link = PaymentLink.objects.create(
+        link_id=generate_random_id(17),  # Transaction reference
+        link_url='',  # Redirect URL
+        customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
+        name=data['name'],
+        description=data.get('description', ''),  # Add description if needed
+        amount=data['amount'],  # Payment amount
+        currency='NGN',  # Currency
+    )
+
+    serializer = PaymentLinkSerializer(link, many=False)
+    print(serializer.data)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+def CreateCheckout(request):
     data = request.data
     url = "https://api.flutterwave.com/v3/payments"
 
@@ -827,22 +886,18 @@ def CreatePaymentLink(request):
     if response.status_code == 200:
         response_data = response.json()
         print(response_data)
-        user_data = response_data.get('data')
 
-        # Assuming PaymentLink is a Django model where you store payment link details
-        link = PaymentLink.objects.create(
-            link_id=user_data.get('tx_ref', ''),  # Transaction reference
-            link_url=user_data.get('redirect_url', ''),  # Redirect URL
-            customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
-            name=user_data.get('customer', {}).get('name', ''),
-            description=data.get('description', ''),  # Add description if needed
-            amount=data['amount'],  # Payment amount
-            currency=user_data['currency'],  # Currency
-        )
+        # Extract the link from the response data
+        user_data = response_data.get('data', {})
+        payment_link = user_data.get('link')
 
-        serializer = PaymentLinkSerializer(link, many=False)
-        print(serializer.data)
-        return Response(serializer.data)
+        if payment_link:
+            return Response({'link': payment_link}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Payment link not found'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Default response in case of unknown errors
+    return Response({'error': 'Something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])

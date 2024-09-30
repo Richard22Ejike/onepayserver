@@ -22,7 +22,7 @@ import json
 import hmac
 import hashlib
 
-from transactions.models import Transaction, Notifications
+from transactions.models import Transaction, Notifications, PaymentLink
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp, send_sms
@@ -883,38 +883,70 @@ def log_event(payload):
     print(f"Received webhook payload: {payload}")
 
 
+
+
 def handle_charge_completed(data):
     # Process a successful charge (e.g., payment)
     print(f"Charge Completed: {data}")
 
-    # Extract phone number from the customer data
+    # Extract phone number and charged amount from the customer data
     customer_phone = data.get("customer", {}).get("phone_number")
+    customer_name = data.get("customer", {}).get("name")
     amount = data.get("charged_amount")
 
     if customer_phone and amount:
         try:
-            # Find the user with the given phone number
-            user = User.objects.get(phone_number=customer_phone)
+            if ':::' in customer_phone:
+                # Extract payment link ID from the customer phone number
+                payment_link_id = customer_phone.split(":::")[0].strip()
 
-            # Add the charged amount to the user's account balance
-            user.balance += amount
-            user.save()
-            print(f"Updated {user.first_name}'s balance to {user.balance}")
+                # Find the payment link using the payment link ID
+                payment_link = PaymentLink.objects.get(link_id=payment_link_id)
 
-            # Send a notification to the user using OneSignal
-            send_notification(user, amount, data)
+                # Find the user using the customer_id from the payment link
+                user = User.objects.get(customer_id=payment_link.customer_id)
 
-            # Log the notification in the database
-            Notifications.objects.create(
-                device_id=user.device_id,
-                customer_id=user.customer_id,
-                topic='Charge Completed',
-                message=f'You have received {amount} NGN from {user.first_name}.'
-            )
+                # Add the charged amount to the user's account balance
+                user.balance += amount
+                user.save()
+                print(f"Updated {user.first_name}'s balance to {user.balance}")
+
+                # Send a notification to the user using OneSignal
+                send_notification(user, amount, data)
+
+                # Log the notification in the database
+                Notifications.objects.create(
+                    device_id=user.device_id,
+                    customer_id=user.customer_id,
+                    topic='Charge Completed',
+                    message=f'You have received {amount} NGN from {user.first_name}.'
+                )
+            else:
+                # Original logic: Find user by phone number
+                user = User.objects.get(phone_number=customer_phone)
+
+                # Add the charged amount to the user's account balance
+                user.balance += amount
+                user.save()
+                print(f"Updated {user.first_name}'s balance to {user.balance}")
+
+                # Send a notification to the user using OneSignal
+                send_notification(user, amount, data)
+
+                # Log the notification in the database
+                Notifications.objects.create(
+                    device_id=user.device_id,
+                    customer_id=user.customer_id,
+                    topic='Charge Completed',
+                    message=f'You have received {amount} NGN from {user.first_name}.'
+                )
         except User.DoesNotExist:
-            print(f"User with phone number {customer_phone} does not exist.")
+            print(f"User with phone number or customer_id does not exist.")
+        except PaymentLink.DoesNotExist:
+            print(f"Payment link with ID {payment_link_id} does not exist.")
     else:
         print("Phone number or amount missing in the webhook data.")
+
 
 
 def send_notification(receiving_user, amount, data):

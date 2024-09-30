@@ -29,6 +29,8 @@ urlpatterns = [
     path('transaction/get-message/<str:pk>/', views.getChats),
     path('transaction/create-payment-link/', views.CreatePaymentLink),
     path('transaction/get-payment-links/<str:pk>/', views.getPaymentLinks),
+    path('transaction/create-checkout/', views.CreateCheckout),
+    path('transaction/get-payment-link/<str:pk>/', views.getPaymentLink),
     path('transaction/edit-payment-link/<str:pk>/', views.EditPaymentLink),
 
 ]
