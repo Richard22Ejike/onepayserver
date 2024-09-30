@@ -847,6 +847,7 @@ def CreatePaymentLink(request):
         currency='NGN',  # Currency
     )
 
+
     serializer = PaymentLinkSerializer(link, many=False)
     print(serializer.data)
     return Response(serializer.data)
