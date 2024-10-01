@@ -898,7 +898,7 @@ def handle_charge_completed(data):
         try:
             if ':::' in customer_phone:
                 # Extract payment link ID from the customer phone number
-                payment_link_id = customer_phone.split(":::")[0].strip()
+                payment_link_id = customer_phone.split(":::")[1].trim()
 
                 # Find the payment link using the payment link ID
                 payment_link = PaymentLink.objects.get(link_id=payment_link_id)
