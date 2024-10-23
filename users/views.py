@@ -9,6 +9,7 @@ import requests
 from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from onesignal.api import default_api
 from onesignal.api.default_api import DefaultApi
 from onesignal.model.notification import Notification
 from rest_framework.authentication import TokenAuthentication
@@ -25,13 +26,14 @@ import hashlib
 from transactions.models import Transaction, Notifications, PaymentLink
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
-from .utils import send_email_to_user, GenerateOtp, send_sms
+from .utils import send_email_to_user, GenerateOtp, send_sms, send_otp
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.hashers import check_password
 
 configuration = onesignal.Configuration(
-    app_key="56618190-490a-4dc6-af2e-71ea67697f99",
-    user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
+    app_key=config('APP_KEY'),
+    api_key=config('API_KEY'),
+    user_key=config('USER_KEY')
 )
 
 
@@ -364,7 +366,7 @@ def createUser(request):
             "phonenumber": data['phone_number'],
             "firstname": data['first_name'],
             "lastname": data['last_name'],
-            "narration": "Richard Ejike"  # You can modify the narration as needed
+            "narration": f"{data['first_name']},{data['last_name']}"  # You can modify the narration as needed
         }
 
         flutterwave_response = requests.post(
@@ -438,6 +440,9 @@ def SignInUser(request):
     phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
     password = data.get('password')
     user = User.objects.get(phone_number=phone_number)
+    print(configuration.api_key)
+    print(configuration.app_key)
+    print(configuration.user_key)
 
     # Authenticate user
     if not check_password(password, user.password):
@@ -446,6 +451,7 @@ def SignInUser(request):
         token, _ = Token.objects.get_or_create(user=user)
     except Exception as e:
         return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
     user_tokens = user.tokens()
     user.device_id = data.get('device_id')
@@ -470,22 +476,31 @@ def forget_password(request):
         return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     # Generate an OTP (One-Time Passcode)
-    otp_code = GenerateOtp()
-    print(otp_code)
-    subject = "One time Passcode for email Verification"
-    email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+    # otp_code = GenerateOtp()
+    # print(otp_code)
+    # subject = "One time Passcode for email Verification"
+    # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+    otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
 
-    try:
-        # Try to create a new OTP entry for the user
-        OneTimePassword.objects.create(user=user, code=otp_code)
-    except IntegrityError:
-        # If an entry already exists, update the existing entry with the new OTP
-        otp_entry = OneTimePassword.objects.get(user=user)
-        otp_entry.code = otp_code
-        otp_entry.save()
+    if otp_response:
+        # Extract the OTP for the 'email' medium
+        otp_code = None
+        for entry in otp_response:
+            if entry['medium'] == 'email':
+                otp_code = entry['otp']
+                break
+
+        try:
+            # Try to create a new OTP entry for the user
+            OneTimePassword.objects.create(user=user, code=otp_code)
+        except IntegrityError:
+            # If an entry already exists, update the existing entry with the new OTP
+            otp_entry = OneTimePassword.objects.get(user=user)
+            otp_entry.code = otp_code
+            otp_entry.save()
 
     # # Send the OTP to the user via email
-    send_email_to_user(email, email_body, subject)
+    # send_email_to_user(email, email_body, subject)
 
     return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
 
@@ -538,21 +553,31 @@ def send_otp_to_email(request):
         return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     # Generate an OTP (One-Time Passcode)
-    otp_code = GenerateOtp()
-    subject = "One time Passcode for email Verification"
-    email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+    # otp_code = GenerateOtp()
+    # subject = "One time Passcode for email Verification"
+    # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+    otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
+    print('two')
 
-    try:
-        # Try to create a new OTP entry for the user
-        OneTimePassword.objects.create(user=user, code=otp_code)
-    except IntegrityError:
-        # If an entry already exists, update the existing entry with the new OTP
-        otp_entry = OneTimePassword.objects.get(user=user)
-        otp_entry.code = otp_code
-        otp_entry.save()
+    if otp_response:
+        # Extract the OTP for the 'email' medium
+        otp_code = None
+        for entry in otp_response:
+            if entry['medium'] == 'email':
+                otp_code = entry['otp']
+                break
+
+        try:
+            # Try to create a new OTP entry for the user
+            OneTimePassword.objects.create(user=user, code=otp_code)
+        except IntegrityError:
+            # If an entry already exists, update the existing entry with the new OTP
+            otp_entry = OneTimePassword.objects.get(user=user)
+            otp_entry.code = otp_code
+            otp_entry.save()
 
     # # Send the OTP to the user via email
-    send_email_to_user(email, email_body, subject)
+    # send_email_to_user(email, email_body, subject)
 
     return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
 
@@ -566,8 +591,17 @@ def send_otp_to_phone(request):
     otp_code = GenerateOtp()
 
     # Send the OTP via SMS
-    send_sms(sms=f'Dear Customer, ${otp_code} is the One Time Password ( OTP ) for your login.', to=phone_number,
-             api_key='TLkdeoFa2SDh2gElzd2AG7r0Lua4KDigbS7Q9EPm9Vt5VO6zdLDWT7a5k0DaU7')
+    # send_sms(sms=f'Dear Customer, $ is the One Time Password ( OTP ) for your login.', to=phone_number,
+    #          api_key=config('SECRET_SMS'))
+    otp_response = send_otp(customer_email='', medium=['sms', 'whatsapp'], customer_phone=phone_number)
+
+    if otp_response:
+        # Extract the OTP for the 'email' medium
+        otp_code = None
+        for entry in otp_response:
+            if entry['medium'] == 'sms' or entry['medium'] == 'whatsapp':
+                otp_code = entry['otp']
+                break
 
     # Update the OTP if the phone number already exists, otherwise create a new entry
     OneTimeOtp.objects.update_or_create(
@@ -576,7 +610,6 @@ def send_otp_to_phone(request):
     )
 
     print(otp_code)
-
     return Response({'message': 'OTP sent to your phone'}, status=status.HTTP_200_OK)
 
 
@@ -643,19 +676,39 @@ def updateUser(request, pk):
     user = User.objects.get(customer_id=pk)
     key = data.get('key', '')
 
+    # Update fields based on 'key' value
     if key == '1':
         user.first_name = data.get('firstName', user.first_name)
         user.last_name = data.get('lastName', user.last_name)
         user.image = data.get('image', user.image)
     else:
-        user.email = data.get('email', user.email)
+        # Update email and phone_number only if they are not null
+        if data.get('email') is not None:
+            user.email = data['email']
+        if data.get('phone_number') is not None:
+            user.phone_number = data['phone_number']
 
-    serializer = UserSerializer(user, data=data, partial=True)  # Use partial to allow partial updates
+    # Prepare a dictionary of fields to pass to the serializer for validation
+    update_data = {}
+    if 'firstName' in data:
+        update_data['first_name'] = data['firstName']
+    if 'lastName' in data:
+        update_data['last_name'] = data['lastName']
+    if 'image' in data:
+        update_data['image'] = data['image']
+    if 'email' in data and data['email'] is not None:
+        update_data['email'] = data['email']
+    if 'phone_number' in data and data['phone_number'] is not None:
+        update_data['phone_number'] = data['phone_number']
+
+    serializer = UserSerializer(user, data=update_data, partial=True)
 
     if serializer.is_valid():
         user.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        print(serializer.data)
+        return Response( serializer.data, status=status.HTTP_200_OK)
     else:
+        print(serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -883,8 +936,6 @@ def log_event(payload):
     print(f"Received webhook payload: {payload}")
 
 
-
-
 def handle_charge_completed(data):
     # Process a successful charge (e.g., payment)
     print(f"Charge Completed: {data}")
@@ -892,8 +943,10 @@ def handle_charge_completed(data):
     # Extract phone number and charged amount from the customer data
     customer_phone = data.get("customer", {}).get("phone_number")
     customer_name = data.get("customer", {}).get("name")
+    customer_email = data.get("customer", {}).get("email")
+    narration = data.get("narration")
     amount = data.get("charged_amount")
-
+    flw_ref = data.get("flw_ref")
     if customer_phone and amount:
         try:
             if ':::' in customer_phone:
@@ -921,6 +974,22 @@ def handle_charge_completed(data):
                     topic='Charge Completed',
                     message=f'You have received {amount} NGN from {user.first_name}.'
                 )
+                Transaction.objects.create(
+
+                    receiver_name=f'{user.first_name}, {user.last_name}',
+                    # Receiver name needs to be passed as in the request
+                    amount=amount,  # Amount is already in the original currency
+                    bank_code='000',
+                    bank=user.bank_name,  # Adjust field names based on response structure
+                    account_number=user.account_number,
+                    customer_id=user.customer_id,
+                    narration=f'Name = {customer_name}, '
+                              f'Phone = {customer_phone.split(":::")[0].strip()},'
+                              f' Email = {customer_email}',
+                    account_id=user.customer_id,
+                    reference=generate_random_id(20),
+                    credit=True,
+                )
             else:
                 # Original logic: Find user by phone number
                 user = User.objects.get(phone_number=customer_phone)
@@ -928,6 +997,20 @@ def handle_charge_completed(data):
                 # Add the charged amount to the user's account balance
                 user.balance += amount
                 user.save()
+                Transaction.objects.create(
+
+                    receiver_name=narration,
+                    # Receiver name needs to be passed as in the request
+                    amount=amount,  # Amount is already in the original currency
+                    bank_code='000',
+                    bank=user.bank_name,  # Adjust field names based on response structure
+                    account_number=user.account_number,
+                    customer_id=user.customer_id,
+                    narration=f'',
+                    account_id=user.customer_id,
+                    reference=flw_ref,
+                    credit=True,
+                )
                 print(f"Updated {user.first_name}'s balance to {user.balance}")
 
                 # Send a notification to the user using OneSignal
@@ -948,12 +1031,42 @@ def handle_charge_completed(data):
         print("Phone number or amount missing in the webhook data.")
 
 
-
 def send_notification(receiving_user, amount, data):
     # OneSignal Configuration
     # Ensure this is set in your Django settings
 
     # Initialize the OneSignal API client
+    url = "https://api.onesignal.com/notifications"
+
+    # Payload to be sent in the POST request
+    payload = {
+        "app_id": configuration.app_key,
+        "target_channel": "push",
+        "contents": {
+            "en": f'You have received {amount} NGN from {data.get("narration", "someone")}.',  # English Message
+            "es": "Spanish Message"  # Spanish Message
+        },
+        "included_segments": [receiving_user.device_id]  # Sending to subscribed users
+    }
+
+    # Headers for the POST request
+    headers = {
+        "Authorization": f"Basic {configuration.api_key}",  # Include the API key
+        "accept": "application/json",  # Accept JSON responses
+        "content-type": "application/json"  # Send JSON request body
+    }
+
+    # Make the POST request to OneSignal
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    Notifications.objects.create(
+        device_id=receiving_user.device_id,
+        customer_id=receiving_user.customer_id,
+        topic='Transfer',
+        message=f'You have received {amount} NGN from {data.get("narration", "someone")}.',
+    )
+    # Output the response from OneSignal
+    print(f"Status Code: {response.status_code}")
+    print(f"Response Body: {response.json()}")
     with onesignal.ApiClient(configuration) as api_client:
         # Create an instance of the API class
         api_instance = DefaultApi(api_client)

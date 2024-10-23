@@ -32,5 +32,6 @@ urlpatterns = [
     path('transaction/create-checkout/', views.CreateCheckout),
     path('transaction/get-payment-link/<str:pk>/', views.getPaymentLink),
     path('transaction/edit-payment-link/<str:pk>/', views.EditPaymentLink),
+    path('transaction/user-notification/<str:pk>/', views.getNotifications),
 
 ]

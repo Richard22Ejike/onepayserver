@@ -28,8 +28,9 @@ import json
 from users.views import generate_random_id
 
 configuration = onesignal.Configuration(
-    app_key="56618190-490a-4dc6-af2e-71ea67697f99",
-    user_key="MjczMDdjYzUtM2FkMy00Y2JhLThjY2QtMTEyNGZhNTdjZDYw"
+    app_key=config('APP_KEY'),
+    api_key=config('API_KEY'),
+    user_key=config('USER_KEY')
 )
 
 secret_key = config('SECRETKEY')
@@ -49,9 +50,9 @@ def makeBillPayment(request, pk):
         # Prepare the payload as per Flutterwave's API structure
         payload = {
             "country": "NG",  # Adjust country if necessary
-            "customer_id": data['customer_id'],  # Customer identifier for the bill payment
+            "customer_id": data['device_number'],  # Customer identifier for the bill payment
             "amount": data['amount'],  # Bill payment amount
-            "reference": data['reference'],  # Unique reference for this transaction
+            "reference": generate_random_id(20),  # Unique reference for this transaction
             "callback_url": "https://your-callback-url.com",  # Replace with your callback URL
         }
 
@@ -66,11 +67,18 @@ def makeBillPayment(request, pk):
         response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code != 200:
+            print(response.status_code)
+            print(response.json())
             # If the request was not successful, return an error response
-            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': response.json(),'problem':response.status_code}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if response.status_code == 200:
             # Log the bill payment in your database
+            print(response.json())
+            user.balance -= data['amount']
+
+            user.save()
+            print(user.balance)
             bill = PayBill.objects.create(
                 amount=data['amount'],
                 product_id=data['product_id'],  # If needed
@@ -136,59 +144,85 @@ def makeInternalTransfer(request, pk):
                 credit=data['credit'],
                 customer_id=user.customer_id
             )
+            Transaction.objects.create(
+                receiver_name=user.first_name,
+                amount=data['amount'],
+                bank_code=data['bank_code'],
+                account_number=to_account_number,
+                narration=data['narration'],
+                account_id=data['account_id'],
+                bank=data['bank'],
+                credit=data['credit'],
+                customer_id=receiving_user.customer_id
+            )
 
             # Serialize the transaction
             serializer = TransactionSerializer(bill, many=False)
 
             # Call SentNotifications endpoint for the receiving user
-            #
-            # with onesignal.ApiClient(configuration) as api_client:
-            #     # Create an instance of the API class
-            #     api_instance = default_api.DefaultApi(api_client)
-            #     notification = Notification(
-            #         app_id='56618190-490a-4dc6-af2e-71ea67697f99',
-            #         include_player_ids=[receiving_user.device_id],
-            #         contents={"en": f'You have received {data["amount"]} from {user.first_name}.'}
-            #     )
-            #
-            #     # example passing only required values which don't have defaults set
-            #     try:
-            #         # Create notification
-            #         api_response = api_instance.create_notification(notification)
-            #         print(api_response)
-            #     except onesignal.ApiException as e:
-            #         print("Exception when calling DefaultApi->create_notification: %s\n" % e)
-            # Notifications.objects.create(
-            #     device_id=receiving_user.device_id,
-            #     customer_id=receiving_user.customer_id,
-            #     topic='Transfer',
-            #     message=f'You have received {data["amount"]} from {user.first_name}.',
-            # )
-            #
-            # # Call SentNotifications endpoint for the sending user
-            # with onesignal.ApiClient(configuration) as api_client:
-            #     # Create an instance of the API class
-            #     api_instance = default_api.DefaultApi(api_client)
-            #     notification = Notification(
-            #         app_id='56618190-490a-4dc6-af2e-71ea67697f99',
-            #         include_player_ids=[user.device_id],
-            #         contents={"en": f'You have sent {data["amount"]} to {receiving_user.first_name}.'}
-            #     )
-            #
-            #     # example passing only required values which don't have defaults set
-            #     try:
-            #         # Create notification
-            #         api_response = api_instance.create_notification(notification)
-            #         print(api_response)
-            #     except onesignal.ApiException as e:
-            #         print("Exception when calling DefaultApi->create_notification: %s\n" % e)
-            # Notifications.objects.create(
-            #     device_id=user.device_id,
-            #     customer_id=user.customer_id,
-            #     topic='Transfer',
-            #     message=f'You have sent {data["amount"]} to {receiving_user.first_name}.',
-            # )
+            url = "https://api.onesignal.com/notifications"
 
+            # Payload to be sent in the POST request
+            payload = {
+                "app_id": configuration.app_key,
+                "target_channel": "push",
+                "contents": {
+                    "en": f'You have received {data["amount"]} from {user.first_name}.',  # English Message
+                    "es": "Spanish Message"  # Spanish Message
+                },
+                "included_segments": [receiving_user.device_id]  # Sending to subscribed users
+            }
+
+            # Headers for the POST request
+            headers = {
+                "Authorization": f"Basic {configuration.api_key}",  # Include the API key
+                "accept": "application/json",  # Accept JSON responses
+                "content-type": "application/json"  # Send JSON request body
+            }
+
+            # Make the POST request to OneSignal
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            Notifications.objects.create(
+                device_id=receiving_user.device_id,
+                customer_id=receiving_user.customer_id,
+                topic='Transfer',
+                message=f'You have received {data["amount"]} from {user.first_name}.',
+            )
+            # Output the response from OneSignal
+            print(f"Status Code: {response.status_code}")
+            print(f"Response Body: {response.json()}")
+            # Call SentNotifications endpoint for the receiving user
+            url = "https://api.onesignal.com/notifications"
+
+            # Payload to be sent in the POST request
+            payload = {
+                "app_id": configuration.app_key,
+                "target_channel": "push",
+                "contents": {
+                    "en": f'You have sent {data["amount"]} to {receiving_user.first_name}.',  # English Message
+                    "es": "Spanish Message"  # Spanish Message
+                },
+                "included_segments": [user.device_id]  # Sending to subscribed users
+            }
+
+            # Headers for the POST request
+            headers = {
+                "Authorization": f"Basic {configuration.api_key}",  # Include the API key
+                "accept": "application/json",  # Accept JSON responses
+                "content-type": "application/json"  # Send JSON request body
+            }
+
+            # Make the POST request to OneSignal
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            Notifications.objects.create(
+                device_id=user.device_id,
+                customer_id=user.customer_id,
+                topic='Transfer',
+                message=f'You have received {data["amount"]} from {user.first_name}.',
+            )
+            # Output the response from OneSignal
+            print(f"Status Code: {response.status_code}")
+            print(f"Response Body: {response.json()}")
             return Response(serializer.data, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -200,9 +234,12 @@ def makeInternalTransfer(request, pk):
 def makeExternalTransfer(request, pk):
     data = request.data
     user = get_object_or_404(User, customer_id=pk)
-
+    amount = data['amount']
+    if user.balance < amount:
+        return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
     # Check if the bank_pin matches
     if data.get('pin') == user.bank_pin:
+        print(data["bank_code"])
         url = "https://api.flutterwave.com/v3/transfers"
         payload = {
             "account_bank": data['bank_code'],  # Flutterwave uses 'account_bank' for the bank code
@@ -210,7 +247,7 @@ def makeExternalTransfer(request, pk):
             "amount": data['amount'],
             "narration": data['narration'],
             "currency": "NGN",  # Currency for Flutterwave is specified in this field
-            "reference": data['reference'],
+            "reference": generate_random_id(20),
             "callback_url": "https://www.flutterwave.com/ng/",  # Customize this if needed
             "debit_currency": "NGN"
         }
@@ -223,11 +260,19 @@ def makeExternalTransfer(request, pk):
 
         if response.status_code != 200:
             # If the request was not successful, return an error response
+            print(response.text)
             return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         response_data = response.json()
         print(response.status_code)
+
         if response.status_code == 200 and response_data['status'] == 'success':
+            # Perform the transfer within a transaction to ensure atomicity
+
+            with transaction.atomic():
+                # Decrease the sender's balance
+                user.balance -= amount
+                user.save()
             transaction_data = response_data['data']
             bill = Transaction.objects.create(
                 receiver_name=data['receiver_name'],  # Receiver name needs to be passed as in the request
@@ -274,7 +319,7 @@ def findAccountbyId(request, pk):
 # Notifications
 @api_view(['GET'])
 def getNotifications(request, pk):
-    notifications = Notifications.objects.filter(account_id=pk)
+    notifications = Notifications.objects.filter(customer_id=pk)
     serializer = NotificationSerializer(notifications, many=True)
     return Response(serializer.data)
 
@@ -375,7 +420,7 @@ def CreateEscrow(request, pk):
     )
 
     serializer = EscrowSerializer(escrow, many=False)
-    return Response(serializer.data)
+    return Response("its worked")
 
 
 @api_view(['PUT'])
@@ -803,50 +848,16 @@ def getPaymentLink(request, pk):
 @api_view(['POST'])
 def CreatePaymentLink(request):
     data = request.data
-    # url = "https://api.flutterwave.com/v3/payments"
-    #
-    # payload = {
-    #     "tx_ref": generate_random_id(17),  # Replace with your transaction reference
-    #     "amount": data['amount'],
-    #     "currency": 'NGN',
-    #     "redirect_url": 'https://flutterwave.com/ng',
-    #     "customer": {
-    #         "email": data['email'],
-    #         "phone_number": data['phone_number'],
-    #         "name": data['name']
-    #     },
-    #     "customizations": {
-    #         "title": 'Oneplug',
-    #         "logo": ''
-    #     }
-    # }
-    #
-    # headers = {
-    #     "Authorization": f"Bearer {secret_key}",  # Replace with your Flutterwave secret key
-    #     "Content-Type": "application/json"
-    # }
-    #
-    # response = requests.post(url, json=payload, headers=headers)
-    #
-    # if response.status_code != 200:
-    #     return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    #
-    # if response.status_code == 200:
-    #     response_data = response.json()
-    #     print(response_data)
-    #     user_data = response_data.get('data')
-    #
-    #     # Assuming PaymentLink is a Django model where you store payment link details
+    links = generate_random_id(17)
     link = PaymentLink.objects.create(
-        link_id=generate_random_id(17),  # Transaction reference
-        link_url='',  # Redirect URL
+        link_id=links,  # Transaction reference
+        link_url=f'https://oneplugpay-payment-link.onrender.com/{links}',  # Redirect URL
         customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
         name=data['name'],
         description=data.get('description', ''),  # Add description if needed
         amount=data['amount'],  # Payment amount
         currency='NGN',  # Currency
     )
-
 
     serializer = PaymentLinkSerializer(link, many=False)
     print(serializer.data)
