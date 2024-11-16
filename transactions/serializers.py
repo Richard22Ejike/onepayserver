@@ -1,6 +1,7 @@
 from rest_framework.serializers import ModelSerializer
 
-from transactions.models import Transaction, PayBill, Card, PaymentLink, Notifications, Escrow, ChatMessage
+from transactions.models import Transaction, PayBill, Card, PaymentDetails, Notifications, Escrow, ChatMessage, \
+    PaymentLink
 
 
 class TransactionSerializer(ModelSerializer):
@@ -27,10 +28,20 @@ class EscrowSerializer(ModelSerializer):
         fields = '__all__'
 
 
+class PaymentDetailsSerializer(ModelSerializer):
+    class Meta:
+        model = PaymentDetails
+        fields = '__all__'
+
+
 class PaymentLinkSerializer(ModelSerializer):
+    payment_details = PaymentDetailsSerializer(many=True, read_only=True)
+
     class Meta:
         model = PaymentLink
-        fields = '__all__'
+        fields = ['id', 'account_id', 'customer_id', 'organization_id', 'environment', 'description',
+                  'name', 'link_id', 'country', 'currency', 'link_url', 'amount', 'created_at',
+                  'update_at', 'is_disabled', 'payment_details']
 
 
 class NotificationSerializer(ModelSerializer):

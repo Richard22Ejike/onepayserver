@@ -91,8 +91,8 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://oneplug_pay_database_5k04_user:lJoIvWoJHdfTQEVFrc16vJKRNc0wvUZx@dpg'
-                '-crq17rt6l47c73arsevg-a.frankfurt-postgres.render.com/oneplug_pay_database_5k04',
+        default='postgresql://oneplug_pay_databases_user:3KFgHDpRRegreT'
+                'i77cmgrmj2ZXVQTtU3@dpg-csdsvp3tq21c73a8bp90-a.frankfurt-postgres.render.com/oneplug_pay_databases',
         conn_max_age=600,
         conn_health_checks=True,
     )

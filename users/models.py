@@ -55,6 +55,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     bvn = models.CharField(max_length=100, default='')
     account_number = models.CharField(max_length=100, default='')
     escrow_fund = models.FloatField(default=0.0)
+    date_of_birth=models.CharField()
     bank_name = models.CharField(default='', max_length=100)
     updated = models.DateTimeField(auto_now=True)
     created = models.DateTimeField(auto_now_add=True)
@@ -66,8 +67,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     state = models.CharField(max_length=100, default='')
     country = models.CharField(max_length=100, default='')
     postal_code = models.CharField(max_length=100, default='')
-    access_token = models.CharField(max_length=100, default='')
-    refresh_token = models.CharField(max_length=100, default='')
+    access_token = models.CharField(max_length=800, default='')
+    refresh_token = models.CharField(max_length=800, default='')
     notification_number = models.IntegerField(default=0)
     kyc_tier = models.IntegerField(default=0)
     USERNAME_FIELD = 'phone_number'

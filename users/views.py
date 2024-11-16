@@ -6,6 +6,7 @@ import string
 from datetime import timedelta, datetime
 from decouple import config
 import requests
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -23,7 +24,7 @@ import json
 import hmac
 import hashlib
 
-from transactions.models import Transaction, Notifications, PaymentLink
+from transactions.models import Transaction, Notifications, PaymentDetails
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp, send_sms, send_otp
@@ -84,166 +85,48 @@ def getUsers(request):
 @api_view(['GET'])
 def addUsers(request):
     data = [
-        {
-            "id": 145,
-            "password": "pbkdf2_sha256$600000$R63OvhatyRl2Cd1YuQmxaI$LGeU84YLtn91NHUZg22j1q/UFGxGtuH2c3V5vbESuuc=",
-            "last_login": None,
-            "username": "vczvzc",
-            "email": "ekene@mail.com",
-            "first_name": "richard",
-            "last_name": "ekeve",
-            "phone_number": "09055555549",
-            "image": "vzvzcx",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "aklbtmcc1v98o57ot",
-            "account_id": "p7v49tstxphkm102x",
-            "organization_id": "cvzvzc",
-            "customer_type": "Personal",
-            "bvn": "213278980998",
-            "account_number": "2201302678",
-            "escrow_fund": 0.0,
-            "bank_name": "GTBank",
-            "updated": "2024-07-19T19:57:20.996714Z",
-            "created": "2024-07-16T16:18:02.930931Z",
-            "bank_pin": "555555",
-            "balance": 2055000.0,
-            "device_id": "da09401e-c403-49f7-a6fe-bfa58aacb326",
-            "street": "zcv",
-            "city": "vz",
-            "state": "czvz",
-            "country": "vczvs",
-            "postal_code": "dfsvx",
-            "access_token": "dfdvzx",
-            "refresh_token": "vsfsgsf",
-            "notification_number": 0,
-            "kyc_tier": 0,
-            "groups": [],
-            "user_permissions": []
-        },
-        {
-            "id": 144,
-            "password": "pbkdf2_sha256$600000$MFQDfO4rnPzKJN5baYPmPB$DnkeHGAyRJPXvKsFy6VpbRzvhLzURyLVet1jvSb2+38=",
-            "last_login": None,
-            "username": "czvvzddfcz",
-            "email": "richard.ekene22@oulook.com",
-            "first_name": "richard",
-            "last_name": "ejike",
-            "phone_number": "08055444489",
-            "image": "vzvz",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "ubfhbks1axy4uy7y1",
-            "account_id": "nt9kpdi28ynndkhfi",
-            "organization_id": "zcv",
-            "customer_type": "Personal",
-            "bvn": "2201309224",
-            "account_number": "2201302456",
-            "escrow_fund": 0.0,
-            "bank_name": "GTBank",
-            "updated": "2024-07-27T08:18:40.010371Z",
-            "created": "2024-07-16T15:31:14.502190Z",
-            "bank_pin": "555555",
-            "balance": 1945000.0,
-            "device_id": "e312410a-f6d5-4f95-b177-c0c2204edbc0",
-            "street": "zvzv",
-            "city": "zcv",
-            "state": "xcv",
-            "country": "cxvx",
-            "postal_code": "zvz",
-            "access_token": "czxvz",
-            "refresh_token": "zcv",
-            "notification_number": 0,
-            "kyc_tier": 0,
-            "groups": [],
-            "user_permissions": []
-        },
-        {
-            "id": 146,
-            "password": "pbkdf2_sha256$600000$0AohaqTz5val3xIab1AyYg$2rWN5P/H7v+od6Pz3AZPD2wjz86SPQdRi9kaRVKsBjM=",
-            "last_login": None,
-            "username": "rich",
-            "email": "richard.ekene22@olook.com",
-            "first_name": "richard",
-            "last_name": "Ejike",
-            "phone_number": "09055444488",
-            "image": "zvzcx",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "GTBT6JB3K",
-            "account_id": "qc2tpbtwkris8jeys",
-            "organization_id": "zcv",
-            "customer_type": "Personal",
-            "bvn": "22398644894",
-            "account_number": "0714152896",
-            "escrow_fund": 0.0,
-            "bank_name": "GTBank",
-            "updated": "2024-08-14T16:34:48.525901Z",
-            "created": "2024-08-14T16:34:48.525901Z",
-            "bank_pin": "555555",
-            "balance": 0.0,
-            "device_id": "e312410a-f6d5-4f95-b177-c0c2204edbc0",
-            "street": "zcv",
-            "city": "vczc",
-            "state": "zcvzcz",
-            "country": "zv",
-            "postal_code": "zv",
-            "access_token": "vzv",
-            "refresh_token": "czvz",
-            "notification_number": 0,
-            "kyc_tier": 0,
-            "groups": [],
-            "user_permissions": []
-        },
-        {
-            "id": 147,
-            "password": "pbkdf2_sha256$600000$nTyilMYPZk1Ak2ZJG93DDI$d3HSv7uRkOOSIXMDYHXSnSNCtBfsOgq3JKFH/xoiCmY=",
-            "last_login": None,
-            "username": "zcv",
-            "email": "richard.ekene22@outlk.com",
-            "first_name": "richard",
-            "last_name": "Ejike",
-            "phone_number": "09055444480",
-            "image": "zvvcvz",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "GTBT6JB3K",
-            "account_id": "rkuhuef7g3uuwofbw",
-            "organization_id": "gdhfghdg",
-            "customer_type": "Personal",
-            "bvn": "22398644800",
-            "account_number": "0714152896",
-            "escrow_fund": 0.0,
-            "bank_name": "GTBank",
-            "updated": "2024-08-14T16:48:56.445999Z",
-            "created": "2024-08-14T16:48:56.445999Z",
-            "bank_pin": "555555",
-            "balance": 0.0,
-            "device_id": "zcvx",
-            "street": "zvz",
-            "city": "zv",
-            "state": "vzv",
-            "country": "zcvzv",
-            "postal_code": "zvzxvd",
-            "access_token": "zvzv",
-            "refresh_token": "bzxvz",
-            "notification_number": 0,
-            "kyc_tier": 0,
-            "groups": [],
-            "user_permissions": []
-        },
+        {'id': 6,
+         'password': 'pbkdf2_sha256$600000$gYkImkwZuuSLzyNQLWJIIe$77BhpJwZjgiv53sdoJJvN///suomDaZNLMs3b1CReIc=',
+         'last_login': None,
+         'username': 'joshua johnson',
+         'email': 'am.joshuajohnson@gmail.com',
+         'first_name': 'Joshua',
+         'last_name': 'Johnson',
+         'phone_number': '07034534116',
+         'image': 'https://res.cloudinary.com/donpd3pem/image/upload/v1729853868/JGCP95921729800783244239920/qlmcli9obqecxzt8tbnf.jpg',
+         'is_staff': False,
+         'is_superuser': False,
+         'is_active': False,
+         'is_verified': False,
+         'status': False,
+         'customer_id': 'JGCP95921729800783244239920',
+         'account_id': '5dijuhwqw3mewbt7n',
+         'organization_id': '5dijuhwqw',
+         'customer_type': 'Personal',
+         'bvn': '22167494876',
+         'account_number': '9917158241',
+         'escrow_fund': 0.0,
+         'bank_name': 'Cashconnect Microfinance Bank',
+         'updated': '2024-10-25T14:04:23.484552Z',
+         'created': '2024-10-24T20:13:04.830740Z',
+         'bank_pin': '555555',
+         'balance': 2407.0,
+         'device_id': '7cc8cb05-d486-4932-9a69-908e98a510f9',
+         'street': '5dijuhwqw',
+         'city': '5dijuhwqw',
+         'state': '5dijuhwqw',
+         'country': '5dijuhwqw',
+         'postal_code': '5dijuhwqw',
+         'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzI5ODY1MzYzLCJp'
+                         'YXQiOjE3Mjk4NjUwNjMsImp0aSI6IjM1ZDcxZTg5ZTIwMTRkZmZiNjdlOWY3NjkwNTgwNmJlIiwidXNlcl9pZCI6Nn0.'
+                         'F1Pkp7FW_Uy_YHl5sjfpXDACdemCFBZnVmwNB2bOlnU',
+         'refresh_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTcyOTk1MTQ2My'
+                          'wiaWF0IjoxNzI5ODY1MDYzLCJqdGkiOiJiNDZmYTY4ZjVkMmY0NDUwYjIwZmJmYTJjNTY1OGZiNiIsInVzZXJfaWQiOj'
+                          'Z9.jZitoxHraIeIyAMgAydRyXjR2rDjN7IHt-ExXdjZPGg',
+         'notification_number': 0,
+         'kyc_tier': 0,
+         'groups': [],
+         'user_permissions': []},
         {
             "id": 148,
             "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
@@ -398,6 +281,7 @@ def createUser(request):
             account_id=generate_random_id(17),
             account_number=flutterwave_data['data']['account_number'],
             customer_id=flutterwave_data['data']['flw_ref'],
+            date_of_birth=data['dob']
         )
 
         # Generate or get existing token for the user
@@ -451,7 +335,6 @@ def SignInUser(request):
         token, _ = Token.objects.get_or_create(user=user)
     except Exception as e:
         return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
     user_tokens = user.tokens()
     user.device_id = data.get('device_id')
@@ -706,7 +589,7 @@ def updateUser(request, pk):
     if serializer.is_valid():
         user.save()
         print(serializer.data)
-        return Response( serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     else:
         print(serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -875,13 +758,27 @@ def ChangePin(request, pk):
 @api_view(['PUT'])
 def SetPin(request, pk):
     data = request.data
-    user = User.objects.get(customer_id=pk)
-    user.bank_pin = data.get('new_pin')
-    user.save()
-    serializer = UserSerializer(user, many=False)
+    new_pin = data.get('new_pin')
 
-    print(serializer.data)
-    return Response(serializer.data)
+    # Validate new_pin for non-empty and exactly 6 characters
+    if not new_pin or len(new_pin) != 6:
+        return Response(
+            {"error": "The PIN must be a 6-digit number."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        user = User.objects.get(customer_id=pk)
+
+        user.bank_pin = new_pin
+        user.save()
+        serializer = UserSerializer(user, many=False)
+        return Response(serializer.data)
+    except ObjectDoesNotExist:
+        return Response(
+            {"error": "User not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 
 @csrf_exempt
@@ -892,22 +789,18 @@ def webhook_listener(request):
     # Retrieve the Flutterwave secret hash from the environment variables
     secret_hash = config("FLW_SECRET_HASH")
     print(f"Secret Hash: {secret_hash}")
-
     # Retrieve the 'verifi-hash' signature from the request headers
     signature = request.headers.get("Verif-Hash")
     print(f"Received Signature: {signature}")
-
     # Check if the signature is valid
     if signature is None or (signature != secret_hash):
         # If the request isn't from Flutterwave, return a 401 Unauthorized response
         return Response(status=401)
-
     # Parse the request payload
     try:
         payload = json.loads(request.body)
     except json.JSONDecodeError:
         return Response({'error': 'Invalid payload'}, status=400)
-
     # It's a good idea to log the received events
     log_event(payload)
     print('connected')
@@ -947,6 +840,7 @@ def handle_charge_completed(data):
     narration = data.get("narration")
     amount = data.get("charged_amount")
     flw_ref = data.get("flw_ref")
+    payment_type = data.get("payment_type")
     if customer_phone and amount:
         try:
             if ':::' in customer_phone:
@@ -954,7 +848,7 @@ def handle_charge_completed(data):
                 payment_link_id = customer_phone.split(":::")[1].strip()
 
                 # Find the payment link using the payment link ID
-                payment_link = PaymentLink.objects.get(link_id=payment_link_id)
+                payment_link = PaymentDetails.objects.get(link_id=payment_link_id)
 
                 # Find the user using the customer_id from the payment link
                 user = User.objects.get(customer_id=payment_link.customer_id)
@@ -972,7 +866,18 @@ def handle_charge_completed(data):
                     device_id=user.device_id,
                     customer_id=user.customer_id,
                     topic='Charge Completed',
-                    message=f'You have received {amount} NGN from {user.first_name}.'
+                    message=f'You have received {amount} NGN from {user.first_name} {user.last_name}.'
+                )
+                PaymentDetails.objects.create(
+                    customer_id=user.customer_id,
+                    name=customer_name,
+                    email=customer_email,
+                    phone_number=customer_phone,
+                    link=payment_link,
+                    narration=narration,
+                    amount=amount,
+                    payment_type=payment_type
+
                 )
                 Transaction.objects.create(
 
@@ -1021,11 +926,11 @@ def handle_charge_completed(data):
                     device_id=user.device_id,
                     customer_id=user.customer_id,
                     topic='Charge Completed',
-                    message=f'You have received {amount} NGN from {user.first_name}.'
+                    message=f'You have received {amount} NGN from {user.first_name} {user.last_name}.'
                 )
         except User.DoesNotExist:
             print(f"User with phone number or customer_id does not exist.")
-        except PaymentLink.DoesNotExist:
+        except PaymentDetails.DoesNotExist:
             print(f"Payment link with ID {payment_link_id} does not exist.")
     else:
         print("Phone number or amount missing in the webhook data.")
@@ -1034,7 +939,6 @@ def handle_charge_completed(data):
 def send_notification(receiving_user, amount, data):
     # OneSignal Configuration
     # Ensure this is set in your Django settings
-
     # Initialize the OneSignal API client
     url = "https://api.onesignal.com/notifications"
 
@@ -1042,11 +946,21 @@ def send_notification(receiving_user, amount, data):
     payload = {
         "app_id": configuration.app_key,
         "target_channel": "push",
+
         "contents": {
             "en": f'You have received {amount} NGN from {data.get("narration", "someone")}.',  # English Message
             "es": "Spanish Message"  # Spanish Message
         },
-        "included_segments": [receiving_user.device_id]  # Sending to subscribed users
+        "headings": {
+            "en": "Payment made"
+        },
+
+        "data": {
+            "custom_key": "custom_value"
+        },
+        "priority": 10,
+        "isAndroid": True,
+        "include_subscription_ids": [receiving_user.device_id]  # Sending to subscribed users
     }
 
     # Headers for the POST request
@@ -1055,7 +969,8 @@ def send_notification(receiving_user, amount, data):
         "accept": "application/json",  # Accept JSON responses
         "content-type": "application/json"  # Send JSON request body
     }
-
+    receiving_user.notification_number += 1
+    receiving_user.save()
     # Make the POST request to OneSignal
     response = requests.post(url, headers=headers, data=json.dumps(payload))
     Notifications.objects.create(

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from django.views.decorators.csrf import csrf_exempt
 import onesignal
 import requests
@@ -11,7 +11,8 @@ from onesignal.model.notification import Notification
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from transactions.models import Transaction, PayBill, PaymentLink, Card, Notifications, Escrow, ChatMessage
+from transactions.models import Transaction, PayBill, PaymentDetails, Card, Notifications, Escrow, ChatMessage, \
+    PaymentLink
 from transactions.serializers import TransactionSerializer, PayBillSerializer, PaymentLinkSerializer, CardSerializer, \
     NotificationSerializer, EscrowSerializer, ChatSerializer
 from users.models import User
@@ -70,7 +71,8 @@ def makeBillPayment(request, pk):
             print(response.status_code)
             print(response.json())
             # If the request was not successful, return an error response
-            return Response({'error': response.json(),'problem':response.status_code}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': response.json(), 'problem': response.status_code},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if response.status_code == 200:
             # Log the bill payment in your database
@@ -88,6 +90,18 @@ def makeBillPayment(request, pk):
                 bill_type=data['bill_type'],
                 device_number=data['device_number'],  # If needed
                 beneficiary_msisdn=data['beneficiary_msisdn'],  # If needed
+            )
+            Transaction.objects.create(
+                receiver_name=user.first_name,
+                amount=data['amount'],
+                bank_code=data['bank_code'],
+                account_number=data['device_number'],
+                narration='bill purchase',
+                account_id=data['account_id'],
+                bank=data['bank'],
+                credit=data['credit'],
+                customer_id=user.customer_id,
+                user_balance=user.balance
             )
 
             # Serialize the bill payment data and return the response
@@ -126,34 +140,38 @@ def makeInternalTransfer(request, pk):
         with transaction.atomic():
             # Decrease the sender's balance
             user.balance -= amount
+            user.notification_number += 1
             user.save()
 
             # Increase the receiver's balance
             receiving_user.balance += amount
+            receiving_user.notification_number += 1
             receiving_user.save()
 
             # Create the transaction record
             bill = Transaction.objects.create(
-                receiver_name=receiving_user.first_name,
+                receiver_name=f'{receiving_user.first_name} {receiving_user.last_name}',
                 amount=data['amount'],
-                bank_code=data['bank_code'],
+                reference=generate_random_id(20),
                 account_number=to_account_number,
                 narration=data['narration'],
-                account_id=data['account_id'],
-                bank=data['bank'],
-                credit=data['credit'],
-                customer_id=user.customer_id
+                account_id=user.account_id,
+                bank='OnePlug',
+                credit=data.get('credit', True),
+                customer_id=user.customer_id,
+                user_balance=user.balance
             )
             Transaction.objects.create(
-                receiver_name=user.first_name,
+                receiver_name=f'{user.first_name} {user.last_name}',
                 amount=data['amount'],
-                bank_code=data['bank_code'],
+                reference=generate_random_id(20),
                 account_number=to_account_number,
                 narration=data['narration'],
-                account_id=data['account_id'],
-                bank=data['bank'],
-                credit=data['credit'],
-                customer_id=receiving_user.customer_id
+                account_id=receiving_user.account_id,
+                bank='OnePlug',
+                credit=False,
+                customer_id=receiving_user.customer_id,
+                user_balance=receiving_user.balance
             )
 
             # Serialize the transaction
@@ -167,11 +185,20 @@ def makeInternalTransfer(request, pk):
                 "app_id": configuration.app_key,
                 "target_channel": "push",
                 "contents": {
-                    "en": f'You have received {data["amount"]} from {user.first_name}.',  # English Message
-                    "es": "Spanish Message"  # Spanish Message
+                    "en": f'You have received {data["amount"]} from {user.first_name}{user.last_name}.'
                 },
-                "included_segments": [receiving_user.device_id]  # Sending to subscribed users
+                "headings": {
+                    "en": "Payment Made"
+                },
+
+                "data": {
+                    "custom_key": "custom_value"
+                },
+                "priority": 10,
+                "isAndroid": True,
+                "include_subscription_ids": [receiving_user.device_id]  # Sending to subscribed users
             }
+            print(receiving_user.device_id)
 
             # Headers for the POST request
             headers = {
@@ -186,7 +213,7 @@ def makeInternalTransfer(request, pk):
                 device_id=receiving_user.device_id,
                 customer_id=receiving_user.customer_id,
                 topic='Transfer',
-                message=f'You have received {data["amount"]} from {user.first_name}.',
+                message=f'You have received {data["amount"]} from {user.first_name} {user.last_name}.',
             )
             # Output the response from OneSignal
             print(f"Status Code: {response.status_code}")
@@ -199,11 +226,20 @@ def makeInternalTransfer(request, pk):
                 "app_id": configuration.app_key,
                 "target_channel": "push",
                 "contents": {
-                    "en": f'You have sent {data["amount"]} to {receiving_user.first_name}.',  # English Message
-                    "es": "Spanish Message"  # Spanish Message
+                    "en": f'You sent {data["amount"]} to {receiving_user.first_name} {receiving_user.last_name}.'
                 },
-                "included_segments": [user.device_id]  # Sending to subscribed users
+                "headings": {
+                    "en": "Payment made"
+                },
+
+                "data": {
+                    "custom_key": "custom_value"
+                },
+                "priority": 10,
+                "isAndroid": True,
+                "include_subscription_ids": [user.device_id, ]  # Sending to subscribed users
             }
+            print(user.device_id)
 
             # Headers for the POST request
             headers = {
@@ -214,6 +250,7 @@ def makeInternalTransfer(request, pk):
 
             # Make the POST request to OneSignal
             response = requests.post(url, headers=headers, data=json.dumps(payload))
+
             Notifications.objects.create(
                 device_id=user.device_id,
                 customer_id=user.customer_id,
@@ -285,6 +322,7 @@ def makeExternalTransfer(request, pk):
                 account_id=data['account_id'],
                 reference=transaction_data['reference'],
                 credit=data['credit'],
+                user_balance=user.balance
             )
             serializer = TransactionSerializer(bill, many=False)
             print(serializer.data)
@@ -571,7 +609,8 @@ def ReleaseEscrowsFund(request, pk):
         account_id=sender.account_id,
         bank=sender.bank_name,  # add appropriate bank name
         credit=True,  # set as credit transaction
-        customer_id=sender.customer_id
+        customer_id=sender.customer_id,
+        user_balance=sender.balance
     )
 
     # Update the escrow status to 'Completed'
@@ -636,6 +675,7 @@ def SaveCard(request):
 def getCards(request, pk):
     cards = Card.objects.filter(customer_id=pk)
     serializer = CardSerializer(cards, many=True)
+    print(serializer.data)
     return Response(serializer.data)
 
 
@@ -688,13 +728,40 @@ def getCards2(request, pk):
 @api_view(['POST'])
 def IssueCard(request):
     data = request.data
+    user = get_object_or_404(User, customer_id=data['customer_id'])
 
-    url = "https://api.blochq.io/v1/cards"
+    url = "https://api.flutterwave.com/v3/virtual-cards"
 
+    try:
+        dob = user.date_of_birth  # This should be the string '19/09/1988'
+        formatted_dob = datetime.strptime(dob, '%d/%m/%Y').strftime('%Y/%m/%d')
+        print(formatted_dob)  # Output to check the formatted date
+    except ValueError as e:
+        return Response(
+            {'error': f'Invalid date_of_birth format: {str(e)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    # Constructing the payload with additional fields
     payload = {
         "customer_id": data['customer_id'],
         "brand": data['brand'],
+        "currency": "NGN",
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "date_of_birth": formatted_dob,
+        "email": user.email,
+        "phone": user.phone_number,
+        "title": data.get("title", "MR"),
+        "gender": data.get("gender", "M"),
+        "amount": data.get("amount", 100),
+        "billing_name": f'{user.first_name} {user.last_name}',
+        "billing_address": "Rumuewhara New Layout",
+        "billing_city": "Port Harcourt",
+        "billing_state": "PH",
+        "billing_postal_code": "500101",
+        "billing_country": "NG"
     }
+
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -702,6 +769,7 @@ def IssueCard(request):
     }
 
     response = requests.post(url, json=payload, headers=headers)
+
     if response.status_code != 200:
         # If the request was not successful, return an error response
         return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -709,39 +777,28 @@ def IssueCard(request):
     if response.status_code == 200:
         response_data = response.json()
         card_data = response_data.get('data')
-        url = f"https://api.blochq.io/v1/cards/secure-data/{card_data.get('id', '')}"
+        user.balance -= data.get("amount", 100)
+        user.save()
 
-        headers = {
-            "accept": "application/json",
-            "authorization": f"Bearer {secret_key}"
-        }
+        # Creating a Card object with the response data
+        card = Card.objects.create(
+            card_id=card_data.get('id', ''),
+            customer_id=data['customer_id'],
+            brand=data['brand'],
+            name=f'{user.first_name} {user.last_name}',
+            balance=card_data.get('amount', ''),
+            pin=card_data.get('cvv', ''),  # Assuming the pin should be mapped to cvv
+            card_number=card_data.get('card_pan', ''),
+            account_id=card_data.get('account_id', ''),
+            currency=card_data.get('currency', ''),
+            expiry_month=card_data.get('expiration', '').split('-')[1],  # Extracting month from "YYYY-MM"
+            expiry_year=card_data.get('expiration', '').split('-')[0],  # Extracting year from "YYYY-MM"
+            cvv=card_data.get('cvv', ''),
+            card_type=card_data.get('card_type', '')
+        )
 
-        cardresponse = requests.get(url, headers=headers)
-        if cardresponse.status_code != 200:
-            # If the request was not successful, return an error response
-            return Response({'error': cardresponse.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        if cardresponse.status_code == 200:
-            cardresponse_data = cardresponse.json()
-            card_data1 = cardresponse_data.get('data')
-            card = Card.objects.create(
-                card_id=card_data1.get('id', ''),
-                customer_id=data['customer_id'],
-                brand=data['brand'],
-                pin=card_data1.get('pin', ''),
-                card_number=card_data1.get('pan', ''),
-                narration=data['narration'],
-                account_id=data['account_id'],
-                reference=data['reference'],
-                currency=data['currency'],
-                expiry_month=card_data1.get('expiry_month', ''),
-                expiry_year=card_data1.get('expiry_year', ''),
-                cvv=card_data1.get('cvv', ''),
-
-            )
-
-            serializer = CardSerializer(card, many=False)
-            return Response(serializer.data)
+        serializer = CardSerializer(card, many=False)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['PUT'])
@@ -764,25 +821,53 @@ def ChangePin(request, pk):
 @api_view(['POST'])
 def fundAccountWithCard(request, pk):
     data = request.data
-
-    # Fetch the user by customer_id (pk)
     user = get_object_or_404(User, customer_id=pk)
 
-    bill = Transaction.objects.create(
-        receiver_name=user.first_name,
-        amount=data['amount'],
-        credit=True,
-        customer_id=user.customer_id,
-        account_number=user.account_number,
-        narration='Pay with Card',
-        account_id=user.account_id,
-        reference='',
-        bank=user.bank_name,
-    )
+    # URL to fund the card
+    url = f"https://api.flutterwave.com/v3/virtual-cards/{data['card_id']}/fund"
 
-    # Serialize the transaction
-    serializer = TransactionSerializer(bill, many=False)
-    return Response(serializer.data)
+    # Request payload for card funding
+    payload = {
+        "amount": data['amount'],
+        "debit_currency": data.get("debit_currency", "NGN")
+    }
+
+    # Set authorization header
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {secret_key}"
+    }
+
+    # Make the POST request to Flutterwave
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code != 200:
+        # If the funding request failed, return an error response
+        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Handle successful funding response
+    response_data = response.json()
+    if response_data['status'] == "success":
+        # Create a transaction record
+        bill = Transaction.objects.create(
+            receiver_name=user.first_name,
+            amount=data['amount'],
+            credit=True,
+            customer_id=user.customer_id,
+            account_number=user.account_number,
+            narration='Pay with Card',
+            account_id=user.account_id,
+            reference=response_data.get('data', {}).get('reference', ''),
+            bank=user.bank_name,
+        )
+
+        # Serialize the transaction data and return it
+        serializer = TransactionSerializer(bill, many=False)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # Handle unexpected response
+    return Response({'error': 'Failed to fund card'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -833,8 +918,8 @@ def WithDrawCard(request, pk):
 # PAYMENTLINK
 @api_view(['GET'])
 def getPaymentLinks(request, pk):
-    paymentLinks = PaymentLink.objects.filter(customer_id=pk)
-    serializer = PaymentLinkSerializer(paymentLinks, many=True)
+    payment_links = PaymentLink.objects.filter(customer_id=pk).prefetch_related('payment_details')
+    serializer = PaymentLinkSerializer(payment_links, many=True)
     return Response(serializer.data)
 
 
