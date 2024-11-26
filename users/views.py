@@ -126,6 +126,7 @@ def addUsers(request):
          'notification_number': 0,
          'kyc_tier': 0,
          'groups': [],
+         'date_of_birth': '1998/06/19',
          'user_permissions': []},
         {
             "id": 148,
@@ -164,6 +165,48 @@ def addUsers(request):
             "refresh_token": " vvsvsfv",
             "notification_number": 0,
             "kyc_tier": 0,
+            'date_of_birth': '1998/06/19',
+            "groups": [],
+            "user_permissions": []
+        },
+        {
+            "id": 149,
+            "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
+            "last_login": None,
+            "username": "richard",
+            "email": "richard.ekene@aun.edu.ng",
+            "first_name": "Richard Ekene",
+            "last_name": "Ejike",
+            "phone_number": "09044444889",
+            "image": "richard",
+            "is_staff": False,
+            "is_superuser": False,
+            "is_active": False,
+            "is_verified": False,
+            "status": False,
+            "customer_id": "FLW-f75719ff079f4b7684fe7e2238829771",
+            "account_id": "vcr4btssh2px4j4nz",
+            "organization_id": "fgdfggadff",
+            "customer_type": "personal",
+            "bvn": "22398644895",
+            "account_number": "8548510800",
+            "escrow_fund": 0.0,
+            "bank_name": "WEMA BANK",
+            "updated": "2024-09-23T14:50:28.505760Z",
+            "created": "2024-09-23T14:50:28.505760Z",
+            "bank_pin": "555555",
+            "balance": 0.0,
+            "device_id": " gfdgf",
+            "street": "dgs",
+            "city": "gs",
+            "state": "sg",
+            "country": "sfg",
+            "postal_code": "sfg",
+            "access_token": "c xv",
+            "refresh_token": " vvsvsfv",
+            "notification_number": 0,
+            "kyc_tier": 0,
+            'date_of_birth': '1998/06/19',
             "groups": [],
             "user_permissions": []
         }
@@ -181,10 +224,6 @@ def addUsers(request):
                 user = serializer.save()
                 added_users.append(user)
             else:
-                print('error')
-                print('error')
-                print('error')
-                print('error')
                 print(serializer.errors)
 
     return Response({"message": "Users added successfully", "users": added_users})
@@ -303,6 +342,8 @@ def createUser(request):
     except KeyError as e:
         error_message = f"Missing required field: {str(e)}"
         return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     except IntegrityError as e:
         error_message = str(e)
@@ -320,180 +361,207 @@ def createUser(request):
 
 @api_view(['POST'])
 def SignInUser(request):
-    data = request.data
-    phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
-    password = data.get('password')
-    user = User.objects.get(phone_number=phone_number)
-    print(configuration.api_key)
-    print(configuration.app_key)
-    print(configuration.user_key)
-
-    # Authenticate user
-    if not check_password(password, user.password):
-        return Response({'message': 'bad credentials'}, status=status.HTTP_401_UNAUTHORIZED)
     try:
-        token, _ = Token.objects.get_or_create(user=user)
+        data = request.data
+        phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
+        password = data.get('password')
+        user = User.objects.get(phone_number=phone_number)
+
+        # Authenticate user
+        if not check_password(password, user.password):
+            return Response({'message': 'bad credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            token, _ = Token.objects.get_or_create(user=user)
+        except Exception as e:
+            return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        user_tokens = user.tokens()
+        user.device_id = data.get('device_id')
+        user.save()
+        user.access_token = str(user_tokens.get('access'))
+        user.refresh_token = str(user_tokens.get('refresh'))
+
+        serializer = UserSerializer(user, many=False)
+        print(serializer.data)
+        return Response({'user': serializer.data,
+                         })
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception as e:
-        return Response({'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    user_tokens = user.tokens()
-    user.device_id = data.get('device_id')
-    user.save()
-    user.access_token = str(user_tokens.get('access'))
-    user.refresh_token = str(user_tokens.get('refresh'))
-
-    serializer = UserSerializer(user, many=False)
-    print(serializer.data)
-    return Response({'user': serializer.data,
-                     })
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def forget_password(request):
-    print('email')
-    data = request.data
-    email = data.get('email')
     try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Generate an OTP (One-Time Passcode)
-    # otp_code = GenerateOtp()
-    # print(otp_code)
-    # subject = "One time Passcode for email Verification"
-    # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
-    otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
-
-    if otp_response:
-        # Extract the OTP for the 'email' medium
-        otp_code = None
-        for entry in otp_response:
-            if entry['medium'] == 'email':
-                otp_code = entry['otp']
-                break
-
+        print('email')
+        data = request.data
+        email = data.get('email')
         try:
-            # Try to create a new OTP entry for the user
-            OneTimePassword.objects.create(user=user, code=otp_code)
-        except IntegrityError:
-            # If an entry already exists, update the existing entry with the new OTP
-            otp_entry = OneTimePassword.objects.get(user=user)
-            otp_entry.code = otp_code
-            otp_entry.save()
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    # # Send the OTP to the user via email
-    # send_email_to_user(email, email_body, subject)
+        # Generate an OTP (One-Time Passcode)
+        # otp_code = GenerateOtp()
+        # print(otp_code)
+        # subject = "One time Passcode for email Verification"
+        # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+        otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
 
-    return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+        if otp_response:
+            # Extract the OTP for the 'email' medium
+            otp_code = None
+            for entry in otp_response:
+                if entry['medium'] == 'email':
+                    otp_code = entry['otp']
+                    break
+
+            try:
+                # Try to create a new OTP entry for the user
+                OneTimePassword.objects.create(user=user, code=otp_code)
+            except IntegrityError:
+                # If an entry already exists, update the existing entry with the new OTP
+                otp_entry = OneTimePassword.objects.get(user=user)
+                otp_entry.code = otp_code
+                otp_entry.save()
+
+        # # Send the OTP to the user via email
+        # send_email_to_user(email, email_body, subject)
+
+        return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def reset_password(request):
-    data = request.data
-    email = data.get('email')
-    otp = data.get('otp')  # OTP entered by the user
-    new_password = data.get('new_password')
-    print(email)
-    print(otp)  # OTP entered by the user
-    print(new_password)
-
-    # Check if a user with the provided email exists
     try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        data = request.data
+        email = data.get('email')
+        otp = data.get('otp')  # OTP entered by the user
+        new_password = data.get('new_password')
+        print(email)
+        print(otp)  # OTP entered by the user
+        print(new_password)
 
-    # Check if the OTP exists and is not expired
-    try:
-        otp_obj = OneTimePassword.objects.get(user=user, code=otp)
-    except OneTimePassword.DoesNotExist:
-        return Response({'message': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+        # Check if a user with the provided email exists
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if the OTP has expired (e.g., expires after 5 minutes)
-    if otp_obj.created_at < timezone.now() - timedelta(minutes=5):
+        # Check if the OTP exists and is not expired
+        try:
+            otp_obj = OneTimePassword.objects.get(user=user, code=otp)
+        except OneTimePassword.DoesNotExist:
+            return Response({'message': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if the OTP has expired (e.g., expires after 5 minutes)
+        if otp_obj.created_at < timezone.now() - timedelta(minutes=5):
+            otp_obj.delete()
+            return Response({'message': 'OTP has expired'}, status=status.HTTP_400_BAD_REQUEST)
+        # Update the user's password
+        user.set_password(new_password)
+        user.save()
+
+        # Delete the OTP object after successful password reset
         otp_obj.delete()
-        return Response({'message': 'OTP has expired'}, status=status.HTTP_400_BAD_REQUEST)
-    # Update the user's password
-    user.set_password(new_password)
-    user.save()
 
-    # Delete the OTP object after successful password reset
-    otp_obj.delete()
-
-    return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def send_otp_to_email(request):
-    data = request.data
-    email = data.get('email')
-
-    # Check if a user with the provided email exists
     try:
-        user = User.objects.get(email=email)
-    except User.DoesNotExist:
-        return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        data = request.data
+        email = data.get('email')
 
-    # Generate an OTP (One-Time Passcode)
-    # otp_code = GenerateOtp()
-    # subject = "One time Passcode for email Verification"
-    # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
-    otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
-    print('two')
-
-    if otp_response:
-        # Extract the OTP for the 'email' medium
-        otp_code = None
-        for entry in otp_response:
-            if entry['medium'] == 'email':
-                otp_code = entry['otp']
-                break
-
+        # Check if a user with the provided email exists
         try:
-            # Try to create a new OTP entry for the user
-            OneTimePassword.objects.create(user=user, code=otp_code)
-        except IntegrityError:
-            # If an entry already exists, update the existing entry with the new OTP
-            otp_entry = OneTimePassword.objects.get(user=user)
-            otp_entry.code = otp_code
-            otp_entry.save()
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    # # Send the OTP to the user via email
-    # send_email_to_user(email, email_body, subject)
+        # Generate an OTP (One-Time Passcode)
+        # otp_code = GenerateOtp()
+        # subject = "One time Passcode for email Verification"
+        # email_body = f"<strong>hi {user.first_name} thanks for Using OnePlug  your \n one time token {otp_code} </strong>"
+        otp_response = send_otp(customer_email=email, medium=['email'], customer_phone='')
+        print('two')
 
-    return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+        if otp_response:
+            # Extract the OTP for the 'email' medium
+            otp_code = None
+            for entry in otp_response:
+                if entry['medium'] == 'email':
+                    otp_code = entry['otp']
+                    break
+
+            try:
+                # Try to create a new OTP entry for the user
+                OneTimePassword.objects.create(user=user, code=otp_code)
+            except IntegrityError:
+                # If an entry already exists, update the existing entry with the new OTP
+                otp_entry = OneTimePassword.objects.get(user=user)
+                otp_entry.code = otp_code
+                otp_entry.save()
+
+        # # Send the OTP to the user via email
+        # send_email_to_user(email, email_body, subject)
+
+        return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def send_otp_to_phone(request):
-    data = request.data
-    phone_number = data.get('phone_number')
+    try:
+        data = request.data
+        phone_number = data.get('phone_number')
 
-    # Generate an OTP (One-Time Passcode)
-    otp_code = GenerateOtp()
+        # Generate an OTP (One-Time Passcode)
+        otp_code = GenerateOtp()
 
-    # Send the OTP via SMS
-    # send_sms(sms=f'Dear Customer, $ is the One Time Password ( OTP ) for your login.', to=phone_number,
-    #          api_key=config('SECRET_SMS'))
-    otp_response = send_otp(customer_email='', medium=['sms', 'whatsapp'], customer_phone=phone_number)
+        # Send the OTP via SMS
+        # send_sms(sms=f'Dear Customer, $ is the One Time Password ( OTP ) for your login.', to=phone_number,
+        #          api_key=config('SECRET_SMS'))
+        otp_response = send_otp(customer_email='', medium=['sms', 'whatsapp'], customer_phone=phone_number)
 
-    if otp_response:
-        # Extract the OTP for the 'email' medium
-        otp_code = None
-        for entry in otp_response:
-            if entry['medium'] == 'sms' or entry['medium'] == 'whatsapp':
-                otp_code = entry['otp']
-                break
+        if otp_response:
+            # Extract the OTP for the 'email' medium
+            otp_code = None
+            for entry in otp_response:
+                if entry['medium'] == 'sms' or entry['medium'] == 'whatsapp':
+                    otp_code = entry['otp']
+                    break
 
-    # Update the OTP if the phone number already exists, otherwise create a new entry
-    OneTimeOtp.objects.update_or_create(
-        key=phone_number,
-        defaults={'code': otp_code, 'created_at': timezone.now()}
-    )
+        # Update the OTP if the phone number already exists, otherwise create a new entry
+        OneTimeOtp.objects.update_or_create(
+            key=phone_number,
+            defaults={'code': otp_code, 'created_at': timezone.now()}
+        )
 
-    print(otp_code)
-    return Response({'message': 'OTP sent to your phone'}, status=status.HTTP_200_OK)
+        print(otp_code)
+        return Response({'message': 'OTP sent to your phone'}, status=status.HTTP_200_OK)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -529,6 +597,11 @@ def otp_verified(request):
 
     except OneTimeOtp.DoesNotExist:
         return Response({'message': "passcode not provided"}, status=status.HTTP_404_NOT_FOUND)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -551,48 +624,59 @@ def password_reset_otp_verified(request):
         }, status=status.HTTP_204_NO_CONTENT)
     except OneTimePassword.DoesNotExist:
         return Response({'message': "passcode not in database"}, status=status.HTTP_404_NOT_FOUND)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
 def updateUser(request, pk):
-    data = request.data
-    user = User.objects.get(customer_id=pk)
-    key = data.get('key', '')
+    try:
+        data = request.data
+        user = User.objects.get(customer_id=pk)
+        key = data.get('key', '')
 
-    # Update fields based on 'key' value
-    if key == '1':
-        user.first_name = data.get('firstName', user.first_name)
-        user.last_name = data.get('lastName', user.last_name)
-        user.image = data.get('image', user.image)
-    else:
-        # Update email and phone_number only if they are not null
-        if data.get('email') is not None:
-            user.email = data['email']
-        if data.get('phone_number') is not None:
-            user.phone_number = data['phone_number']
+        # Update fields based on 'key' value
+        if key == '1':
+            user.first_name = data.get('firstName', user.first_name)
+            user.last_name = data.get('lastName', user.last_name)
+            user.image = data.get('image', user.image)
+        else:
+            # Update email and phone_number only if they are not null
+            if data.get('email') is not None:
+                user.email = data['email']
+            if data.get('phone_number') is not None:
+                user.phone_number = data['phone_number']
 
-    # Prepare a dictionary of fields to pass to the serializer for validation
-    update_data = {}
-    if 'firstName' in data:
-        update_data['first_name'] = data['firstName']
-    if 'lastName' in data:
-        update_data['last_name'] = data['lastName']
-    if 'image' in data:
-        update_data['image'] = data['image']
-    if 'email' in data and data['email'] is not None:
-        update_data['email'] = data['email']
-    if 'phone_number' in data and data['phone_number'] is not None:
-        update_data['phone_number'] = data['phone_number']
+        # Prepare a dictionary of fields to pass to the serializer for validation
+        update_data = {}
+        if 'firstName' in data:
+            update_data['first_name'] = data['firstName']
+        if 'lastName' in data:
+            update_data['last_name'] = data['lastName']
+        if 'image' in data:
+            update_data['image'] = data['image']
+        if 'email' in data and data['email'] is not None:
+            update_data['email'] = data['email']
+        if 'phone_number' in data and data['phone_number'] is not None:
+            update_data['phone_number'] = data['phone_number']
 
-    serializer = UserSerializer(user, data=update_data, partial=True)
+        serializer = UserSerializer(user, data=update_data, partial=True)
 
-    if serializer.is_valid():
-        user.save()
-        print(serializer.data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    else:
-        print(serializer.errors)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if serializer.is_valid():
+            user.save()
+            print(serializer.data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            print(serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])

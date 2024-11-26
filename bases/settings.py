@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-6dwsxiz_t4nosfs+f9yzqobr(_cy5_ah&@1ho2jk2&u=*s1^p4'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*', '127.0.0.1', '192.168.43.158', 'localhost']
 
@@ -91,8 +91,9 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://oneplug_pay_databases_user:3KFgHDpRRegreT'
-                'i77cmgrmj2ZXVQTtU3@dpg-csdsvp3tq21c73a8bp90-a.frankfurt-postgres.render.com/oneplug_pay_databases',
+        default='postgresql://oneplug_pay_databasess_user:'
+                'TrNCxCxquV0CP0tWNit6F3Qa6UZPmDUA@dpg-ct2qrabqf0us73a0o7dg-a.'
+                'frankfurt-postgres.render.com/oneplug_pay_databasess',
         conn_max_age=600,
         conn_health_checks=True,
     )
