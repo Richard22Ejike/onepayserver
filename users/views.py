@@ -195,7 +195,7 @@ def addUsers(request):
             "updated": "2024-09-23T14:50:28.505760Z",
             "created": "2024-09-23T14:50:28.505760Z",
             "bank_pin": "555555",
-            "balance": 0.0,
+            "balance": 50000.0,
             "device_id": " gfdgf",
             "street": "dgs",
             "city": "gs",
