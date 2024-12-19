@@ -1,5 +1,4 @@
 from django.db import models
-
 from users.models import User
 
 
@@ -15,6 +14,7 @@ class Transaction(models.Model):
     currency = models.CharField(max_length=10, default='NGN')  # The currency of the transfer
     narration = models.TextField(default='')  # The narration for the transfer
     transaction_fee = models.IntegerField(default=0)
+    user_balance = models.IntegerField(default=0)
     receiver_name = models.CharField(default='', max_length=100)
     date_sent = models.DateTimeField(auto_now_add=True)
     credit = models.BooleanField(default=False)
@@ -64,6 +64,7 @@ class Card(models.Model):
     tx_ref = models.CharField(max_length=50)  # Unique reference for the transaction
     linked = models.BooleanField(default=False)
     date_created = models.DateTimeField(auto_now_add=True)
+    card_type = models.CharField(default='')
 
     def __str__(self):
         return f"{self.balance} - {self.card_number} - {self.email} - {self.tx_ref}"
@@ -103,6 +104,25 @@ class PaymentLink(models.Model):
         return self.name
 
 
+class PaymentDetails(models.Model):
+    customer_id = models.CharField(max_length=100, default='')
+    name = models.CharField(max_length=255, default='')
+    email = models.EmailField(max_length=255)
+    phone_number = models.IntegerField(max_length=200, default=0)
+    link = models.ForeignKey(PaymentLink, related_name="payment_details", on_delete=models.CASCADE)
+    narration = models.CharField(default='')
+    amount = models.IntegerField(default=0)
+    payment_type = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Payment Detail"
+        verbose_name_plural = "Payment Details"
+
+    def __str__(self):
+        return self.name
+
+
 class Escrow(models.Model):
     account_id = models.CharField(max_length=100, default='')
     customer_id = models.CharField(max_length=100, default='')
@@ -118,7 +138,7 @@ class Escrow(models.Model):
     reference = models.CharField(max_length=100, default='')
     sender_name = models.CharField(max_length=80, default='')
     receiver_email = models.EmailField(max_length=100, blank=True, default='')
-    receiver_id = models.IntegerField( default=0)
+    receiver_id = models.IntegerField(default=0)
     currency = models.CharField(max_length=10, default='NGN')
     link_url = models.URLField(default='')
     make_payment = models.BooleanField(default=False)
@@ -131,7 +151,6 @@ class Escrow(models.Model):
     dispute = models.CharField(max_length=80, default='')
     is_disabled = models.BooleanField(default=False)
 
-
     class Meta:
         verbose_name = "Escrow"
         verbose_name_plural = "Escrow"
@@ -142,6 +161,7 @@ class Escrow(models.Model):
 
 class ChatMessage(models.Model):
     escrow_id = models.IntegerField(default=0)
+    chat_id = models.CharField(default='')
     sender_by = models.IntegerField(default=0)
     sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
     receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)

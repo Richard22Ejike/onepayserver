@@ -1,10 +1,54 @@
+import json
 import os
 import random
+
+import firebase_admin
+import google.auth.transport.requests
 import requests
+from google.oauth2 import  service_account
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from decouple import config
+
 from users.models import User, OneTimePassword
+
+service_account_file = r"C:\Users\Richard dev\PycharmProjects\OnePlusPay\users\followstars-252ef-firebase-adminsdk-ttwen-3cee3b3be7.json"
+credentials = service_account.Credentials.from_service_account_file(
+    service_account_file, scopes=["https://www.googleapis.com/auth/firebase.messaging"]
+)
+
+
+def get_access_token():
+    request = google.auth.transport.requests.Request()
+    credentials.refresh(request)
+    return credentials.token
+
+
+def send_fcm_notification(device_token, title, body):
+    fcm_url = 'https://fcm.googleapis.com/v1/projects/followstars-252ef/messages:send'
+    print('Notification')
+    message = {
+        'message': {
+            "token": device_token,
+            "notification": {
+                "title": title,
+                "body": body
+            }
+        }
+    }
+    print('Notification')
+    headers = {
+        'Authorization': f"Bearer {get_access_token()}",
+        'Content-Type': 'application/json; UTF-8',
+
+    }
+    print('Notification')
+    response = requests.post(fcm_url, headers=headers, data=json.dumps(message))
+
+    if response.status_code == 200:
+        print('Notification sent successfully')
+    else:
+        print(f'Error sending notification: {response.status_code}, {response.text}')
 
 
 def GenerateOtp():

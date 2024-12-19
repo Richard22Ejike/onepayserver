@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from django.views.decorators.csrf import csrf_exempt
 import onesignal
 import requests
@@ -11,7 +11,8 @@ from onesignal.model.notification import Notification
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from transactions.models import Transaction, PayBill, PaymentLink, Card, Notifications, Escrow, ChatMessage
+from transactions.models import Transaction, PayBill, PaymentDetails, Card, Notifications, Escrow, ChatMessage, \
+    PaymentLink
 from transactions.serializers import TransactionSerializer, PayBillSerializer, PaymentLinkSerializer, CardSerializer, \
     NotificationSerializer, EscrowSerializer, ChatSerializer
 from users.models import User
@@ -19,6 +20,7 @@ from users.serializers import UserSerializer
 from users.utils import send_email_to_user
 from django.utils import timezone
 import uuid
+from django.shortcuts import get_object_or_404
 from django.http import HttpRequest
 from rest_framework.request import Request
 
@@ -39,258 +41,317 @@ secret_key = config('SECRETKEY')
 # Bill Payments
 @api_view(['POST'])
 def makeBillPayment(request, pk):
-    data = request.data
-    # Fetch the user by customer_id (pk)
-    user = get_object_or_404(User, customer_id=pk)
+    try:
+        data = request.data
+        # Fetch the user by customer_id (pk)
+        user = get_object_or_404(User, customer_id=pk)
 
-    # Check if the bank_pin matches
-    if data.get('pin') == user.bank_pin:
-        url = f"https://api.flutterwave.com/v3/billers/{data['operator_id']}/items/{data['product_id']}/payment"
+        # Check if the bank_pin matches
+        if data.get('pin') == user.bank_pin:
+            url = f"https://api.flutterwave.com/v3/billers/{data['operator_id']}/items/{data['product_id']}/payment"
 
-        # Prepare the payload as per Flutterwave's API structure
-        payload = {
-            "country": "NG",  # Adjust country if necessary
-            "customer_id": data['device_number'],  # Customer identifier for the bill payment
-            "amount": data['amount'],  # Bill payment amount
-            "reference": generate_random_id(20),  # Unique reference for this transaction
-            "callback_url": "https://your-callback-url.com",  # Replace with your callback URL
-        }
+            # Prepare the payload as per Flutterwave's API structure
+            payload = {
+                "country": "NG",  # Adjust country if necessary
+                "customer_id": data['device_number'],  # Customer identifier for the bill payment
+                "amount": data['amount'],  # Bill payment amount
+                "reference": generate_random_id(20),  # Unique reference for this transaction
+                "callback_url": "https://your-callback-url.com",  # Replace with your callback URL
+            }
 
-        # Set headers with authorization token
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"  # Ensure to pass your Flutterwave secret key
-        }
+            # Set headers with authorization token
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "authorization": f"Bearer {secret_key}"  # Ensure to pass your Flutterwave secret key
+            }
 
-        # Make the POST request to Flutterwave API
-        response = requests.post(url, headers=headers, json=payload)
+            # Make the POST request to Flutterwave API
+            response = requests.post(url, headers=headers, json=payload)
 
-        if response.status_code != 200:
-            print(response.status_code)
-            print(response.json())
-            # If the request was not successful, return an error response
-            return Response({'error': response.json(),'problem':response.status_code}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if response.status_code != 200:
+                print(response.status_code)
+                print(response.json())
+                # If the request was not successful, return an error response
+                return Response({'error': response.json(), 'problem': response.status_code},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        if response.status_code == 200:
-            # Log the bill payment in your database
-            print(response.json())
-            user.balance -= data['amount']
+            if response.status_code == 200:
+                # Log the bill payment in your database
+                print(response.json())
+                user.balance -= data['amount']
 
-            user.save()
-            print(user.balance)
-            bill = PayBill.objects.create(
-                amount=data['amount'],
-                product_id=data['product_id'],  # If needed
-                operator_id=data['operator_id'],  # If needed
-                account_id=data['account_id'],  # If needed
-                meter_type=data['meter_type'],  # If needed
-                bill_type=data['bill_type'],
-                device_number=data['device_number'],  # If needed
-                beneficiary_msisdn=data['beneficiary_msisdn'],  # If needed
-            )
+                user.save()
+                print(user.balance)
+                bill = PayBill.objects.create(
+                    amount=data['amount'],
+                    product_id=data['product_id'],  # If needed
+                    operator_id=data['operator_id'],  # If needed
+                    account_id=data['account_id'],  # If needed
+                    meter_type=data['meter_type'],  # If needed
+                    bill_type=data['bill_type'],
+                    device_number=data['device_number'],  # If needed
+                    beneficiary_msisdn=data['beneficiary_msisdn'],  # If needed
+                )
+                Transaction.objects.create(
+                    receiver_name=user.first_name,
+                    amount=data['amount'],
+                    bank_code=data['bank_code'],
+                    account_number=data['device_number'],
+                    narration='bill purchase',
+                    account_id=data['account_id'],
+                    bank=data['bank'],
+                    credit=data['credit'],
+                    customer_id=user.customer_id,
+                    user_balance=user.balance
+                )
 
-            # Serialize the bill payment data and return the response
-            serializer = PayBillSerializer(bill, many=False)
-            return Response(serializer.data)
-    else:
-        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
+                # Serialize the bill payment data and return the response
+                serializer = PayBillSerializer(bill, many=False)
+                return Response(serializer.data)
+        else:
+            return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
+    except User.DoesNotExist:
+        return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Transfers
 @api_view(['POST'])
 def makeInternalTransfer(request, pk):
-    data = request.data
-    print(pk)
-    user = get_object_or_404(User, customer_id=pk)
-
-    if data.get('pin') != user.bank_pin:
-        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
-
-    amount = data['amount']
-    to_account_number = data['account_number']
-    print(to_account_number)
-
-    # Fetch the receiving user by account number
-    receiving_user = get_object_or_404(User, account_number=to_account_number)
-
-    if user.id == receiving_user.id:
-        return Response({"error": "Can transfer to your own account."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Ensure that the user has sufficient balance for the transfer
-    if user.balance < amount:
-        return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Perform the transfer within a transaction to ensure atomicity
     try:
-        with transaction.atomic():
-            # Decrease the sender's balance
-            user.balance -= amount
-            user.save()
+        data = request.data
+        print(pk)
+        user = get_object_or_404(User, customer_id=pk)
 
-            # Increase the receiver's balance
-            receiving_user.balance += amount
-            receiving_user.save()
+        if data.get('pin') != user.bank_pin:
+            return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Create the transaction record
-            bill = Transaction.objects.create(
-                receiver_name=receiving_user.first_name,
-                amount=data['amount'],
-                bank_code=data['bank_code'],
-                account_number=to_account_number,
-                narration=data['narration'],
-                account_id=data['account_id'],
-                bank=data['bank'],
-                credit=data['credit'],
-                customer_id=user.customer_id
-            )
-            Transaction.objects.create(
-                receiver_name=user.first_name,
-                amount=data['amount'],
-                bank_code=data['bank_code'],
-                account_number=to_account_number,
-                narration=data['narration'],
-                account_id=data['account_id'],
-                bank=data['bank'],
-                credit=data['credit'],
-                customer_id=receiving_user.customer_id
-            )
+        amount = data['amount']
+        to_account_number = data['account_number']
+        print(to_account_number)
 
-            # Serialize the transaction
-            serializer = TransactionSerializer(bill, many=False)
+        # Fetch the receiving user by account number
+        receiving_user = get_object_or_404(User, account_number=to_account_number)
 
-            # Call SentNotifications endpoint for the receiving user
-            url = "https://api.onesignal.com/notifications"
+        if user.id == receiving_user.id:
+            return Response({"error": "Can not transfer to your own account."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Payload to be sent in the POST request
-            payload = {
-                "app_id": configuration.app_key,
-                "target_channel": "push",
-                "contents": {
-                    "en": f'You have received {data["amount"]} from {user.first_name}.',  # English Message
-                    "es": "Spanish Message"  # Spanish Message
-                },
-                "included_segments": [receiving_user.device_id]  # Sending to subscribed users
-            }
+        # Ensure that the user has sufficient balance for the transfer
+        if user.balance < amount:
+            return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Headers for the POST request
-            headers = {
-                "Authorization": f"Basic {configuration.api_key}",  # Include the API key
-                "accept": "application/json",  # Accept JSON responses
-                "content-type": "application/json"  # Send JSON request body
-            }
+        # Perform the transfer within a transaction to ensure atomicity
+        try:
+            with transaction.atomic():
+                # Decrease the sender's balance
+                user.balance -= amount
+                user.notification_number += 1
+                user.save()
 
-            # Make the POST request to OneSignal
-            response = requests.post(url, headers=headers, data=json.dumps(payload))
-            Notifications.objects.create(
-                device_id=receiving_user.device_id,
-                customer_id=receiving_user.customer_id,
-                topic='Transfer',
-                message=f'You have received {data["amount"]} from {user.first_name}.',
-            )
-            # Output the response from OneSignal
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Body: {response.json()}")
-            # Call SentNotifications endpoint for the receiving user
-            url = "https://api.onesignal.com/notifications"
+                # Increase the receiver's balance
+                receiving_user.balance += amount
+                receiving_user.notification_number += 1
+                receiving_user.save()
 
-            # Payload to be sent in the POST request
-            payload = {
-                "app_id": configuration.app_key,
-                "target_channel": "push",
-                "contents": {
-                    "en": f'You have sent {data["amount"]} to {receiving_user.first_name}.',  # English Message
-                    "es": "Spanish Message"  # Spanish Message
-                },
-                "included_segments": [user.device_id]  # Sending to subscribed users
-            }
+                # Create the transaction record
+                bill = Transaction.objects.create(
+                    receiver_name=f'{receiving_user.first_name} {receiving_user.last_name}',
+                    amount=data['amount'],
+                    reference=generate_random_id(20),
+                    account_number=to_account_number,
+                    narration=data['narration'],
+                    account_id=user.account_id,
+                    bank='OnePlug',
+                    credit=data.get('credit', True),
+                    customer_id=user.customer_id,
+                    user_balance=user.balance
 
-            # Headers for the POST request
-            headers = {
-                "Authorization": f"Basic {configuration.api_key}",  # Include the API key
-                "accept": "application/json",  # Accept JSON responses
-                "content-type": "application/json"  # Send JSON request body
-            }
+                )
+                Transaction.objects.create(
+                    receiver_name=f'{user.first_name} {user.last_name}',
+                    amount=data['amount'],
+                    reference=generate_random_id(20),
+                    account_number=to_account_number,
+                    narration=data['narration'],
+                    account_id=receiving_user.account_id,
+                    bank='OnePlug',
+                    credit=False,
+                    customer_id=receiving_user.customer_id,
+                    user_balance=receiving_user.balance
+                )
 
-            # Make the POST request to OneSignal
-            response = requests.post(url, headers=headers, data=json.dumps(payload))
-            Notifications.objects.create(
-                device_id=user.device_id,
-                customer_id=user.customer_id,
-                topic='Transfer',
-                message=f'You have received {data["amount"]} from {user.first_name}.',
-            )
-            # Output the response from OneSignal
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Body: {response.json()}")
-            return Response(serializer.data, status=status.HTTP_200_OK)
+                # Serialize the transaction
+                serializer = TransactionSerializer(bill, many=False)
 
+                # Call SentNotifications endpoint for the receiving user
+                url = "https://api.onesignal.com/notifications"
+
+                # Payload to be sent in the POST request
+                payload = {
+                    "app_id": configuration.app_key,
+                    "target_channel": "push",
+                    "contents": {
+                        "en": f'You have received {data["amount"]} from {user.first_name}{user.last_name}.'
+                    },
+                    "headings": {
+                        "en": "Payment Made"
+                    },
+
+                    "data": {
+                        "custom_key": "custom_value"
+                    },
+                    "priority": 10,
+                    "isAndroid": True,
+                    "include_subscription_ids": [receiving_user.device_id]  # Sending to subscribed users
+                }
+                print(receiving_user.device_id)
+
+                # Headers for the POST request
+                headers = {
+                    "Authorization": f"Key {configuration.api_key}",  # Include the API key
+                    "accept": "application/json",  # Accept JSON responses
+                    "content-type": "application/json"  # Send JSON request body
+                }
+
+                # Make the POST request to OneSignal
+                response = requests.post(url, headers=headers, data=json.dumps(payload))
+                Notifications.objects.create(
+                    device_id=receiving_user.device_id,
+                    customer_id=receiving_user.customer_id,
+                    topic='Transfer',
+                    message=f'You have received {data["amount"]} from {user.first_name} {user.last_name}.',
+                )
+                # Output the response from OneSignal
+                print(f"Status Code: {response.status_code}")
+                print(f"Response Body: {response.json()}")
+                # Call SentNotifications endpoint for the receiving user
+                url = "https://api.onesignal.com/notifications?c=push"
+
+                # Payload to be sent in the POST request
+                payload = {
+                    "app_id": configuration.app_key,
+                    "target_channel": "push",
+                    "contents": {
+                        "en": f'You sent {data["amount"]} to {receiving_user.first_name} {receiving_user.last_name}.'
+                    },
+                    "headings": {
+                        "en": "Payment made"
+                    },
+
+                    "data": {
+                        "custom_key": "custom_value"
+                    },
+                    "priority": 10,
+                    "isAndroid": True,
+                    "include_subscription_ids": [user.device_id, ]  # Sending to subscribed users
+                }
+                print(configuration.api_key)
+                print("Payload:", json.dumps(payload, indent=4))
+                print("Headers:", headers)
+                # Headers for the POST request
+                headers = {
+                    "Authorization": f"Basic {configuration.api_key}",  # Include the API key
+                    "accept": "application/json",  # Accept JSON responses
+                    "content-type": "application/json"  # Send JSON request body
+                }
+
+                # Make the POST request to OneSignal
+                response = requests.post(url, headers=headers, data=json.dumps(payload))
+
+                Notifications.objects.create(
+                    device_id=user.device_id,
+                    customer_id=user.customer_id,
+                    topic='Transfer',
+                    message=f'You have received {data["amount"]} from {user.first_name}.',
+                )
+                # Output the response from OneSignal
+                print(f"Status Code: {response.status_code}")
+                print(f"Response Body: {response.json()}")
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(e)
+            return Response({"error": 'something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception as e:
-        print(e)
-        return Response({"error": 'something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def makeExternalTransfer(request, pk):
-    data = request.data
-    user = get_object_or_404(User, customer_id=pk)
-    amount = data['amount']
-    if user.balance < amount:
-        return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
-    # Check if the bank_pin matches
-    if data.get('pin') == user.bank_pin:
-        print(data["bank_code"])
-        url = "https://api.flutterwave.com/v3/transfers"
-        payload = {
-            "account_bank": data['bank_code'],  # Flutterwave uses 'account_bank' for the bank code
-            "account_number": data['account_number'],
-            "amount": data['amount'],
-            "narration": data['narration'],
-            "currency": "NGN",  # Currency for Flutterwave is specified in this field
-            "reference": generate_random_id(20),
-            "callback_url": "https://www.flutterwave.com/ng/",  # Customize this if needed
-            "debit_currency": "NGN"
-        }
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {secret_key}"  # Ensure you have your Flutterwave secret key
-        }
-        response = requests.post(url, headers=headers, json=payload)
+    try:
+        data = request.data
+        user = get_object_or_404(User, customer_id=pk)
+        amount = data['amount']
+        if user.balance < amount:
+            return Response({"error": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
+        # Check if the bank_pin matches
+        if data.get('pin') == user.bank_pin:
+            print(data["bank_code"])
+            url = "https://api.flutterwave.com/v3/transfers"
+            payload = {
+                "account_bank": data['bank_code'],  # Flutterwave uses 'account_bank' for the bank code
+                "account_number": data['account_number'],
+                "amount": data['amount'],
+                "narration": data['narration'],
+                "currency": "NGN",  # Currency for Flutterwave is specified in this field
+                "reference": generate_random_id(20),
+                "callback_url": "https://www.flutterwave.com/ng/",  # Customize this if needed
+                "debit_currency": "NGN"
+            }
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "authorization": f"Bearer {secret_key}"  # Ensure you have your Flutterwave secret key
+            }
+            response = requests.post(url, headers=headers, json=payload)
 
-        if response.status_code != 200:
-            # If the request was not successful, return an error response
-            print(response.text)
-            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if response.status_code != 200:
+                # If the request was not successful, return an error response
+                print(response.text)
+                return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        response_data = response.json()
-        print(response.status_code)
+            response_data = response.json()
+            print(response.status_code)
 
-        if response.status_code == 200 and response_data['status'] == 'success':
-            # Perform the transfer within a transaction to ensure atomicity
+            if response.status_code == 200 and response_data['status'] == 'success':
+                # Perform the transfer within a transaction to ensure atomicity
 
-            with transaction.atomic():
-                # Decrease the sender's balance
-                user.balance -= amount
-                user.save()
-            transaction_data = response_data['data']
-            bill = Transaction.objects.create(
-                receiver_name=data['receiver_name'],  # Receiver name needs to be passed as in the request
-                amount=transaction_data['amount'],  # Amount is already in the original currency
-                bank_code=transaction_data['bank_code'],
-                bank=transaction_data['bank_name'],  # Adjust field names based on response structure
-                account_number=transaction_data['account_number'],
-                customer_id=pk,
-                narration=data['narration'],
-                account_id=data['account_id'],
-                reference=transaction_data['reference'],
-                credit=data['credit'],
-            )
-            serializer = TransactionSerializer(bill, many=False)
-            print(serializer.data)
-            return Response(serializer.data)
-    else:
-        return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
+                with transaction.atomic():
+                    # Decrease the sender's balance
+                    user.balance -= amount
+                    user.save()
+                transaction_data = response_data['data']
+                bill = Transaction.objects.create(
+                    receiver_name=data['receiver_name'],  # Receiver name needs to be passed as in the request
+                    amount=transaction_data['amount'],  # Amount is already in the original currency
+                    bank_code=transaction_data['bank_code'],
+                    bank=transaction_data['bank_name'],  # Adjust field names based on response structure
+                    account_number=transaction_data['account_number'],
+                    customer_id=pk,
+                    narration=data['narration'],
+                    account_id=data['account_id'],
+                    reference=transaction_data['reference'],
+                    credit=data['credit'],
+                    user_balance=user.balance
+                )
+                serializer = TransactionSerializer(bill, many=False)
+                print(serializer.data)
+                return Response(serializer.data)
+        else:
+            return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -363,64 +424,82 @@ def getUserEscrows(request, pk):
 
 @api_view(['POST'])
 def CreateEscrow(request, pk):
-    data = request.data
-    print(data['customer_id'])
+    try:
+        data = request.data
+        print(data['customer_id'])
 
-    # Fetch the user by customer_id (pk)
-    user = get_object_or_404(User, customer_id=pk)
-    make_payment = False
-    # Check if the bank_pin matches
-    if data.get('pin') != user.bank_pin:
-        return Response({"error": "Incorrect bank pin."}, status=400)
-    subject = "One time Passcode for email Verification"
-    email_body = (f"<strong>hi thanks for Using OnePlug  \n {user.first_name} has created an escrow with you. please "
-                  f"check your profile to accepted or cancel the request  </strong>")
+        # Fetch the user by customer_id (pk)
+        user = get_object_or_404(User, customer_id=pk)
+        make_payment = False
+        # Check if the bank_pin matches
+        if data.get('pin') != user.bank_pin:
+            return Response({"error": "Incorrect bank pin."}, status=400)
+        subject = "One time Passcode for email Verification"
+        email_body = (f"<strong>hi thanks for Using OnePlug  \n {user.first_name} has created an escrow with you. please "
+                      f"check your profile to accepted or cancel the request  </strong>")
 
-    # # Send the OTP to the user via email
-    send_email_to_user(data['receiver_email'], email_body, subject)
+        # # Send the OTP to the user via email
+        send_email_to_user(data['receiver_email'], email_body, subject)
 
-    # Check if role equals role_paying and if user has enough escrow_fund
-    if data['role'] == data['role_paying']:
-        print(user.balance)
+        # Check if role equals role_paying and if user has enough escrow_fund
+        if data['role'] == data['role_paying']:
+            print(user.balance)
 
-        escrow_amount = data.get('amount') * 100  # Assume escrow_amount is part of the request data
-        print(escrow_amount)
-        if user.balance < escrow_amount:
-            return Response({"error": "Insufficient balance."}, status=400)
+            escrow_amount = data.get('amount')   # Assume escrow_amount is part of the request data
 
-        # Deduct the escrow amount from user's escrow fund
+            if user.balance < escrow_amount:
+                return Response({"error": "Insufficient balance."}, status=400)
 
-        user.balance -= escrow_amount
-        user.escrow_fund += escrow_amount
-        make_payment = True
-        user.save()
+            # Deduct the escrow amount from user's escrow fund
 
-    # Generate a unique reference number using a combination of timestamp and UUID
-    reference = f"{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
+            user.balance -= escrow_amount
+            user.escrow_fund += escrow_amount
+            make_payment = True
+            user.save()
 
-    # Create the escrow
-    escrow = Escrow.objects.create(
-        customer_id=data['customer_id'],
-        escrow_description=data['escrow_description'],
-        escrow_name=data['escrow_name'],
-        escrow_Status=data['escrow_Status'],
-        receiver_email=data['receiver_email'],
-        payment_type=data['payment_type'],
-        role=data['role'],
-        amount=data['amount'] * 100,
-        sender_name=data['sender_name'],
-        account_id=data['account_id'],
-        role_paying=data['role_paying'],
-        estimated_days=data['estimated_days'],
-        milestone=data['milestone'],
-        number_milestone=data['number_milestone'],
-        receiver_id=data['receiver_id'],
-        make_payment=make_payment,
-        reference=reference  # Assign the generated reference number
-    )
+        # Generate a unique reference number using a combination of timestamp and UUID
+        reference = f"{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    serializer = EscrowSerializer(escrow, many=False)
-    return Response("its worked")
+        # Create the escrow
+        escrow = Escrow.objects.create(
+            customer_id=data['customer_id'],
+            escrow_description=data['escrow_description'],
+            escrow_name=data['escrow_name'],
+            escrow_Status=data['escrow_Status'],
+            receiver_email=data['receiver_email'],
+            payment_type=data['payment_type'],
+            role=data['role'],
+            amount=data['amount'],
+            sender_name=data['sender_name'],
+            account_id=data['account_id'],
+            role_paying=data['role_paying'],
+            estimated_days=data['estimated_days'],
+            milestone=data['milestone'],
+            number_milestone=data['number_milestone'],
+            receiver_id=data['receiver_id'],
+            make_payment=make_payment,
+            reference=reference  # Assign the generated reference number
+        )
+        Transaction.objects.create(
+            receiver_name=f"{user.first_name} {user.last_name}",
+            amount=escrow.amount,
+            bank_code='',  # add appropriate bank code
+            account_number=user.account_number,
+            narration='Escrow payment',
+            account_id=user.account_id,
+            bank=user.bank_name,  # add appropriate bank name
+            credit=False,  # set as credit transaction
+            customer_id=user.customer_id,
+            user_balance=user.balance
+        )
+
+        serializer = EscrowSerializer(escrow, many=False)
+        return Response(serializer.data,status=status.HTTP_200_OK)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
@@ -571,7 +650,8 @@ def ReleaseEscrowsFund(request, pk):
         account_id=sender.account_id,
         bank=sender.bank_name,  # add appropriate bank name
         credit=True,  # set as credit transaction
-        customer_id=sender.customer_id
+        customer_id=recipient.customer_id,
+        user_balance=recipient.balance
     )
 
     # Update the escrow status to 'Completed'
@@ -636,6 +716,7 @@ def SaveCard(request):
 def getCards(request, pk):
     cards = Card.objects.filter(customer_id=pk)
     serializer = CardSerializer(cards, many=True)
+    print(serializer.data)
     return Response(serializer.data)
 
 
@@ -687,61 +768,85 @@ def getCards2(request, pk):
 
 @api_view(['POST'])
 def IssueCard(request):
-    data = request.data
+    try:
+        data = request.data
+        user = get_object_or_404(User, customer_id=data['customer_id'])
 
-    url = "https://api.blochq.io/v1/cards"
 
-    payload = {
-        "customer_id": data['customer_id'],
-        "brand": data['brand'],
-    }
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "authorization": f"Bearer {secret_key}"
-    }
+        url = "https://api.flutterwave.com/v3/virtual-cards"
 
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code != 200:
-        # If the request was not successful, return an error response
-        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    if response.status_code == 200:
-        response_data = response.json()
-        card_data = response_data.get('data')
-        url = f"https://api.blochq.io/v1/cards/secure-data/{card_data.get('id', '')}"
+        try:
+            dob = user.date_of_birth  # This should be the string '19/09/1988'
+            formatted_dob = datetime.strptime(dob, '%d/%m/%Y').strftime('%Y/%m/%d')
+            print(formatted_dob)  # Output to check the formatted date
+        except ValueError as e:
+            return Response(
+                {'error': f'Invalid date_of_birth format: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Constructing the payload with additional fields
+        payload = {
+            "customer_id": data['customer_id'],
+            "brand": data['brand'],
+            "currency": "NGN",
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "date_of_birth": formatted_dob,
+            "email": user.email,
+            "phone": user.phone_number,
+            "title": data.get("title", "MR"),
+            "gender": data.get("gender", "M"),
+            "amount": data.get("amount", 100),
+            "billing_name": f'{user.first_name} {user.last_name}',
+            "billing_address": "Rumuewhara New Layout",
+            "billing_city": "Port Harcourt",
+            "billing_state": "PH",
+            "billing_postal_code": "500101",
+            "billing_country": "NG"
+        }
 
         headers = {
             "accept": "application/json",
+            "content-type": "application/json",
             "authorization": f"Bearer {secret_key}"
         }
 
-        cardresponse = requests.get(url, headers=headers)
-        if cardresponse.status_code != 200:
-            # If the request was not successful, return an error response
-            return Response({'error': cardresponse.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = requests.post(url, json=payload, headers=headers)
 
-        if cardresponse.status_code == 200:
-            cardresponse_data = cardresponse.json()
-            card_data1 = cardresponse_data.get('data')
+        if response.status_code != 200:
+            # If the request was not successful, return an error response
+            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if response.status_code == 200:
+            response_data = response.json()
+            card_data = response_data.get('data')
+            user.balance -= data.get("amount", 100)
+            user.save()
+
+            # Creating a Card object with the response data
             card = Card.objects.create(
-                card_id=card_data1.get('id', ''),
+                card_id=card_data.get('id', ''),
                 customer_id=data['customer_id'],
                 brand=data['brand'],
-                pin=card_data1.get('pin', ''),
-                card_number=card_data1.get('pan', ''),
-                narration=data['narration'],
-                account_id=data['account_id'],
-                reference=data['reference'],
-                currency=data['currency'],
-                expiry_month=card_data1.get('expiry_month', ''),
-                expiry_year=card_data1.get('expiry_year', ''),
-                cvv=card_data1.get('cvv', ''),
-
+                name=f'{user.first_name} {user.last_name}',
+                balance=card_data.get('amount', ''),
+                pin=card_data.get('cvv', ''),  # Assuming the pin should be mapped to cvv
+                card_number=card_data.get('card_pan', ''),
+                account_id=card_data.get('account_id', ''),
+                currency=card_data.get('currency', ''),
+                expiry_month=card_data.get('expiration', '').split('-')[1],  # Extracting month from "YYYY-MM"
+                expiry_year=card_data.get('expiration', '').split('-')[0],  # Extracting year from "YYYY-MM"
+                cvv=card_data.get('cvv', ''),
+                card_type=card_data.get('card_type', '')
             )
 
             serializer = CardSerializer(card, many=False)
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
@@ -763,26 +868,60 @@ def ChangePin(request, pk):
 
 @api_view(['POST'])
 def fundAccountWithCard(request, pk):
-    data = request.data
+    try:
+        data = request.data
+        user = get_object_or_404(User, customer_id=pk)
 
-    # Fetch the user by customer_id (pk)
-    user = get_object_or_404(User, customer_id=pk)
+        # URL to fund the card
+        url = f"https://api.flutterwave.com/v3/virtual-cards/{data['card_id']}/fund"
 
-    bill = Transaction.objects.create(
-        receiver_name=user.first_name,
-        amount=data['amount'],
-        credit=True,
-        customer_id=user.customer_id,
-        account_number=user.account_number,
-        narration='Pay with Card',
-        account_id=user.account_id,
-        reference='',
-        bank=user.bank_name,
-    )
+        # Request payload for card funding
+        payload = {
+            "amount": data['amount'],
+            "debit_currency": data.get("debit_currency", "NGN")
+        }
 
-    # Serialize the transaction
-    serializer = TransactionSerializer(bill, many=False)
-    return Response(serializer.data)
+        # Set authorization header
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "authorization": f"Bearer {secret_key}"
+        }
+
+        # Make the POST request to Flutterwave
+        response = requests.post(url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            # If the funding request failed, return an error response
+            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Handle successful funding response
+        response_data = response.json()
+        if response_data['status'] == "success":
+            # Create a transaction record
+            bill = Transaction.objects.create(
+                receiver_name=user.first_name,
+                amount=data['amount'],
+                credit=True,
+                customer_id=user.customer_id,
+                account_number=user.account_number,
+                narration='Pay with Card',
+                account_id=user.account_id,
+                reference=response_data.get('data', {}).get('reference', ''),
+                bank=user.bank_name,
+            )
+
+            # Serialize the transaction data and return it
+            serializer = TransactionSerializer(bill, many=False)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # Handle unexpected response
+        return Response({'error': 'Failed to fund card'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -833,8 +972,8 @@ def WithDrawCard(request, pk):
 # PAYMENTLINK
 @api_view(['GET'])
 def getPaymentLinks(request, pk):
-    paymentLinks = PaymentLink.objects.filter(customer_id=pk)
-    serializer = PaymentLinkSerializer(paymentLinks, many=True)
+    payment_links = PaymentLink.objects.filter(customer_id=pk).prefetch_related('payment_details')
+    serializer = PaymentLinkSerializer(payment_links, many=True)
     return Response(serializer.data)
 
 
@@ -847,69 +986,81 @@ def getPaymentLink(request, pk):
 
 @api_view(['POST'])
 def CreatePaymentLink(request):
-    data = request.data
-    links = generate_random_id(17)
-    link = PaymentLink.objects.create(
-        link_id=links,  # Transaction reference
-        link_url=f'https://oneplugpay-payment-link.onrender.com/{links}',  # Redirect URL
-        customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
-        name=data['name'],
-        description=data.get('description', ''),  # Add description if needed
-        amount=data['amount'],  # Payment amount
-        currency='NGN',  # Currency
-    )
+    try:
+        data = request.data
+        links = generate_random_id(17)
+        link = PaymentLink.objects.create(
+            link_id=links,  # Transaction reference
+            link_url=f'https://oneplugpay-payment-link.onrender.com/{links}',  # Redirect URL
+            customer_id=data.get('customer_id', ''),  # Optionally store customer ID if needed
+            name=data['name'],
+            description=data.get('description', ''),  # Add description if needed
+            amount=data['amount'],  # Payment amount
+            currency='NGN',  # Currency
+        )
 
-    serializer = PaymentLinkSerializer(link, many=False)
-    print(serializer.data)
-    return Response(serializer.data)
+        serializer = PaymentLinkSerializer(link, many=False)
+        print(serializer.data)
+        return Response(serializer.data)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 def CreateCheckout(request):
-    data = request.data
-    url = "https://api.flutterwave.com/v3/payments"
+    try:
+        data = request.data
+        url = "https://api.flutterwave.com/v3/payments"
 
-    payload = {
-        "tx_ref": generate_random_id(17),  # Replace with your transaction reference
-        "amount": data['amount'],
-        "currency": 'NGN',
-        "redirect_url": 'https://flutterwave.com/ng',
-        "customer": {
-            "email": data['email'],
-            "phone_number": data['phone_number'],
-            "name": data['name']
-        },
-        "customizations": {
-            "title": 'Oneplug',
-            "logo": ''
+        payload = {
+            "tx_ref": generate_random_id(17),  # Replace with your transaction reference
+            "amount": data['amount'],
+            "currency": 'NGN',
+            "redirect_url": 'https://flutterwave.com/ng',
+            "customer": {
+                "email": data['email'],
+                "phone_number": data['phone_number'],
+                "name": data['name']
+            },
+            "customizations": {
+                "title": 'Oneplug',
+                "logo": ''
+            }
         }
-    }
 
-    headers = {
-        "Authorization": f"Bearer {secret_key}",  # Replace with your Flutterwave secret key
-        "Content-Type": "application/json"
-    }
+        headers = {
+            "Authorization": f"Bearer {secret_key}",  # Replace with your Flutterwave secret key
+            "Content-Type": "application/json"
+        }
 
-    response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers)
 
-    if response.status_code != 200:
-        return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        if response.status_code != 200:
+            return Response({'error': response.text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    if response.status_code == 200:
-        response_data = response.json()
-        print(response_data)
+        if response.status_code == 200:
+            response_data = response.json()
+            print(response_data)
 
-        # Extract the link from the response data
-        user_data = response_data.get('data', {})
-        payment_link = user_data.get('link')
+            # Extract the link from the response data
+            user_data = response_data.get('data', {})
+            payment_link = user_data.get('link')
 
-        if payment_link:
-            return Response({'link': payment_link}, status=status.HTTP_200_OK)
-        else:
-            return Response({'error': 'Payment link not found'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if payment_link:
+                return Response({'link': payment_link}, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Payment link not found'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # Default response in case of unknown errors
-    return Response({'error': 'Something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Default response in case of unknown errors
+        return Response({'error': 'Something went wrong'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        # Catch all other exceptions and return their details
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
