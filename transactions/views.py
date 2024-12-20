@@ -36,87 +36,166 @@ configuration = onesignal.Configuration(
 )
 
 secret_key = config('SECRETKEY')
-
+user_id = "your_userid"  # Replace with actual user ID
+api_key = "your_apikey"  # Replace with actual API key
 
 # Bill Payments
+
+
+
 @api_view(['POST'])
-def makeBillPayment(request, pk):
+def makeBillPayment(request):
     try:
         data = request.data
-        # Fetch the user by customer_id (pk)
-        user = get_object_or_404(User, customer_id=pk)
+        user = get_object_or_404(User, customer_id=data.get('customer_id', ''))
 
-        # Check if the bank_pin matches
-        if data.get('pin') == user.bank_pin:
-            url = f"https://api.flutterwave.com/v3/billers/{data['operator_id']}/items/{data['product_id']}/payment"
+        # Step 1: Check Wallet Balance
+        balance_url = f"https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID={user_id}&APIKey={api_key}"
+        balance_response = requests.get(balance_url)
 
-            # Prepare the payload as per Flutterwave's API structure
-            payload = {
-                "country": "NG",  # Adjust country if necessary
-                "customer_id": data['device_number'],  # Customer identifier for the bill payment
-                "amount": data['amount'],  # Bill payment amount
-                "reference": generate_random_id(20),  # Unique reference for this transaction
-                "callback_url": "https://your-callback-url.com",  # Replace with your callback URL
-            }
+        if balance_response.status_code != 200:
+            return Response({"error": "Failed to fetch wallet balance", "details": balance_response.json()},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # Set headers with authorization token
-            headers = {
-                "accept": "application/json",
-                "content-type": "application/json",
-                "authorization": f"Bearer {secret_key}"  # Ensure to pass your Flutterwave secret key
-            }
+        wallet_data = balance_response.json()
+        wallet_balance = float(wallet_data.get("balance", 0))
 
-            # Make the POST request to Flutterwave API
-            response = requests.post(url, headers=headers, json=payload)
+        if wallet_balance < float(data['amount']):
+            return Response({"error": "Insufficient wallet balance"}, status=status.HTTP_400_BAD_REQUEST)
 
-            if response.status_code != 200:
-                print(response.status_code)
-                print(response.json())
-                # If the request was not successful, return an error response
-                return Response({'error': response.json(), 'problem': response.status_code},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Step 2: Verify Customer Details
+        service_type = data.get('service_type')
+        name = ""
 
-            if response.status_code == 200:
-                # Log the bill payment in your database
-                print(response.json())
-                user.balance -= data['amount']
-
-                user.save()
-                print(user.balance)
-                bill = PayBill.objects.create(
-                    amount=data['amount'],
-                    product_id=data['product_id'],  # If needed
-                    operator_id=data['operator_id'],  # If needed
-                    account_id=data['account_id'],  # If needed
-                    meter_type=data['meter_type'],  # If needed
-                    bill_type=data['bill_type'],
-                    device_number=data['device_number'],  # If needed
-                    beneficiary_msisdn=data['beneficiary_msisdn'],  # If needed
-                )
-                Transaction.objects.create(
-                    receiver_name=user.first_name,
-                    amount=data['amount'],
-                    bank_code=data['bank_code'],
-                    account_number=data['device_number'],
-                    narration='bill purchase',
-                    account_id=data['account_id'],
-                    bank=data['bank'],
-                    credit=data['credit'],
-                    customer_id=user.customer_id,
-                    user_balance=user.balance
-                )
-
-                # Serialize the bill payment data and return the response
-                serializer = PayBillSerializer(bill, many=False)
-                return Response(serializer.data)
+        if service_type == 'electricity':
+            verify_url = (f"https://www.nellobytesystems.com/APIVerifyElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
+                          f"&ElectricCompany={data['electric_company_code']}"
+                          f"&meterno={data['meter_no']}")
+        elif service_type == 'cabletv':
+            verify_url = (f"https://www.nellobytesystems.com/APIVerifyCableTVV1.0.asp?UserID={user_id}&APIKey={api_key}"
+                          f"&cabletv={data['cable_tv_code']}"
+                          f"&smartcardno={data['smart_card_no']}")
+        elif service_type == 'betting':
+            verify_url = (f"https://www.nellobytesystems.com/APIVerifyBettingV1.asp?UserID={user_id}&APIKey={api_key}"
+                          f"&BettingCompany={data['betting_code']}"
+                          f"&CustomerID={data['betting_customer_id']}")
         else:
-            return Response({"error": "Incorrect bank pin."}, status=status.HTTP_400_BAD_REQUEST)
-    except User.DoesNotExist:
-        return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            # For airtime and data, no verification is needed
+            name = 'airtime' if service_type == 'airtime' else 'data'
+            verify_url = None
+
+        if verify_url:
+            verify_response = requests.get(verify_url)
+            if verify_response.status_code != 200:
+                return Response({"error": "Failed to verify customer details", "details": verify_response.json()},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            verify_data = verify_response.json()
+            name = verify_data.get('customer_name', '')
+
+        # Step 3: Determine Service URL
+        if service_type == 'airtime':
+            service_url = (f"https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID={user_id}&APIKey={api_key}"
+                           f"&MobileNetwork={data['mobile_network']}"
+                           f"&Amount={data['amount']}"
+                           f"&MobileNumber={data['mobilenumber']}"
+                           f"&RequestID={data['request_id']}"
+                           f"&CallBackURL={data['callback_url']}")
+        elif service_type == 'databundle':
+            service_url = (f"https://www.nellobytesystems.com/APIDatabundleV1.asp?UserID={user_id}&APIKey={api_key}"
+                           f"&MobileNetwork={data['mobile_network']}"
+                           f"&DataPlan={data['data_plan']}"
+                           f"&MobileNumber={data['mobile_number']}"
+                           f"&RequestID={data['request_id']}"
+                           f"&CallBackURL={data['callback_url']}")
+        elif service_type == 'cabletv':
+            service_url = (f"https://www.nellobytesystems.com/APICableTVV1.asp?UserID={user_id}&APIKey={api_key}"
+                           f"&CableTV={data['cabletv_code']}"
+                           f"&Package={data['package_code']}"
+                           f"&SmartCardNo={data['smart_card_no']}"
+                           f"&PhoneNo={data['mobile_number']}"
+                           f"&RequestID={data['request_id']}"
+                           f"&CallBackURL={data['callback_url']}")
+        elif service_type == 'electricity':
+            service_url = (f"https://www.nellobytesystems.com/APIElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
+                           f"&ElectricCompany={data['electric_company_code']}"
+                           f"&MeterType={data['meter_type']}"
+                           f"&MeterNo={data['meter_no']}"
+                           f"&Amount={data['amount']}"
+                           f"&PhoneNo={data['mobile_number']}"
+                           f"&RequestID={data['request_id']}"
+                           f"&CallBackURL={data['callback_url']}")
+        elif service_type == 'betting':
+            service_url = (f"https://www.nellobytesystems.com/APIBettingV1.asp?UserID={user_id}&APIKey={api_key}"
+                           f"&BettingCompany={data['betting_code']}"
+                           f"&CustomerID={data['customer_id']}"
+                           f"&Amount={data['amount']}"
+                           f"&RequestID={data['request_id']}"
+                           f"&CallBackURL={data['callback_url']}")
+        else:
+            return Response({"error": "Invalid service type"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Step 4: Make Service Request
+        service_response = requests.get(service_url)
+
+        if service_response.status_code != 200:
+            return Response({"error": "Failed to complete the transaction", "details": service_response.json()},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        service_data = service_response.json()
+        order_id = service_data.get("orderid")
+
+        # Step 5: Query Transaction
+        query_url = f"https://www.nellobytesystems.com/APIQueryV1.asp?UserID={user_id}&APIKey={api_key}&OrderID={order_id}"
+        query_response = requests.get(query_url)
+
+        if query_response.status_code != 200:
+            return Response({"error": "Failed to query transaction", "details": query_response.json()},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        transaction_data = query_response.json()
+
+        # Step 6: Create PayBill Entry
+        paybill = PayBill.objects.create(
+            name=name,
+            account_id=data.get('account_id', ''),
+            customer_id=data.get('customer_id', ''),
+            amount=data['amount'],
+            operator_id=data.get('operator_id', ''),
+            order_id=order_id,
+            meter_type=data.get('meter_type', ''),
+            device_number=data.get('device_number', ''),
+            status=transaction_data.get('status', ''),
+            remark=transaction_data.get('remark', ''),
+            order_type=data.get('order_type', ''),
+            mobile_network=data.get('mobile_network', ''),
+            mobile_number=data.get('mobile_number', ''),
+            meter_token=transaction_data.get('meter_token', ''),
+            wallet_balance=wallet_balance
+        )
+
+        user.balance -= data['amount']
+        user.save()
+
+        Transaction.objects.create(
+            receiver_name=user.first_name,
+            amount=data['amount'],
+            bank_code=data.get('bank_code', ''),
+            account_number=data.get('device_number', ''),
+            narration='bill purchase',
+            account_id=data.get('account_id', ''),
+            bank=data.get('bank', ''),
+            credit=data.get('credit', 0),
+            customer_id=user.customer_id,
+            user_balance=user.balance
+        )
+
+        serializer = PayBillSerializer(paybill, many=False)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     except requests.exceptions.RequestException as e:
         return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception as e:
-        # Catch all other exceptions and return their details
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -435,8 +514,9 @@ def CreateEscrow(request, pk):
         if data.get('pin') != user.bank_pin:
             return Response({"error": "Incorrect bank pin."}, status=400)
         subject = "One time Passcode for email Verification"
-        email_body = (f"<strong>hi thanks for Using OnePlug  \n {user.first_name} has created an escrow with you. please "
-                      f"check your profile to accepted or cancel the request  </strong>")
+        email_body = (
+            f"<strong>hi thanks for Using OnePlug  \n {user.first_name} has created an escrow with you. please "
+            f"check your profile to accepted or cancel the request  </strong>")
 
         # # Send the OTP to the user via email
         send_email_to_user(data['receiver_email'], email_body, subject)
@@ -445,7 +525,7 @@ def CreateEscrow(request, pk):
         if data['role'] == data['role_paying']:
             print(user.balance)
 
-            escrow_amount = data.get('amount')   # Assume escrow_amount is part of the request data
+            escrow_amount = data.get('amount')  # Assume escrow_amount is part of the request data
 
             if user.balance < escrow_amount:
                 return Response({"error": "Insufficient balance."}, status=400)
@@ -494,7 +574,7 @@ def CreateEscrow(request, pk):
         )
 
         serializer = EscrowSerializer(escrow, many=False)
-        return Response(serializer.data,status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     except requests.exceptions.RequestException as e:
         return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception as e:
@@ -771,7 +851,6 @@ def IssueCard(request):
     try:
         data = request.data
         user = get_object_or_404(User, customer_id=data['customer_id'])
-
 
         url = "https://api.flutterwave.com/v3/virtual-cards"
 

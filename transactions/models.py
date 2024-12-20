@@ -29,22 +29,30 @@ class Transaction(models.Model):
 
 
 class PayBill(models.Model):
-    account_id = models.CharField(max_length=15, default='')  # Customer identifier
-    amount = models.IntegerField(default=0)  # Amount for the service
-    operator_id = models.CharField(max_length=20, default='')  # Type of service
-    product_id = models.CharField(max_length=10, default='ONCE')  # Recurrence type
-    meter_type = models.CharField(max_length=50, default='')  # Unique reference
-    device_number = models.CharField(max_length=100, blank=True,
-                                     default='')  # Biller name (Only for Ghana Airtime bills)
-    beneficiary_msisdn = models.DateTimeField(auto_now_add=True)
-    bill_type = models.CharField(max_length=100, default='')
-    REQUIRED_FIELDS = ['country', 'customer', 'amount', 'type']
+    name = models.CharField(max_length=200, default='')
+    customer_id = models.CharField(max_length=100, default='')
+    account_id = models.CharField(max_length=150, default='')  # Customer identifier
+    amount = models.DecimalField(max_digits=100, decimal_places=2, default=0)  # Amount for the service
+    operator_id = models.CharField(max_length=200, default='')  # Type of service
+    order_id = models.CharField(max_length=500, default='')  # Unique order identifier
+    meter_type = models.CharField(max_length=500, default='')  # Meter type (if applicable)
+    device_number = models.CharField(max_length=100, blank=True, default='')  # Device number or smart card number
+    order_date = models.DateTimeField(auto_now_add=True)  # Order date
+    status = models.CharField(max_length=500, default='')  # Status of the transaction
+    remark = models.TextField(blank=True, default='')  # Additional remarks about the transaction
+    order_type = models.CharField(max_length=100, default='')  # Type of order/service
+    mobile_network = models.CharField(max_length=500, blank=True, default='')  # Mobile network (if applicable)
+    mobile_number = models.CharField(max_length=150, blank=True, default='')  # Beneficiary mobile number
+    meter_token = models.TextField(blank=True, default='')  # Meter token (if applicable)
+    wallet_balance = models.DecimalField(max_digits=150, decimal_places=4, default=0)  # Wallet balance
+
+    REQUIRED_FIELDS = ['account_id', 'amount', 'order_id', 'status']
 
     def __str__(self):
-        return f"{self.account_id}"
+        return f"{self.order_id} - {self.status}"
 
     def tokens(self):
-        pass
+        return self.meter_token
 
 
 class Card(models.Model):
