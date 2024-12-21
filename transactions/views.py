@@ -17,7 +17,7 @@ from transactions.serializers import TransactionSerializer, PayBillSerializer, P
     NotificationSerializer, EscrowSerializer, ChatSerializer
 from users.models import User
 from users.serializers import UserSerializer
-from users.utils import send_email_to_user
+from users.utils import send_email_to_user, send_fcm_notification
 from django.utils import timezone
 import uuid
 from django.shortcuts import get_object_or_404
@@ -195,7 +195,17 @@ def makeBillPayment(request, pk):
             customer_id=user.customer_id,
             user_balance=user.balance
         )
-        
+        amount = data['amount']
+        send_fcm_notification(user.device_id,
+                              'Charge Completed',
+                              f'You have purchased {amount} NGNfor bill payment.')
+
+        Notifications.objects.create(
+            device_id=user.device_id,
+            customer_id=user.customer_id,
+            topic='Transfer',
+            message=f'You have purchased {amount} NGN for bill payment.',
+        )
 
         serializer = PayBillSerializer(paybill, many=False)
         print(serializer.data)
@@ -308,6 +318,9 @@ def makeInternalTransfer(request, pk):
 
                 # Make the POST request to OneSignal
                 response = requests.post(url, headers=headers, data=json.dumps(payload))
+                send_fcm_notification(user.device_id,
+                                      'Charge Completed',
+                                      f'You have received {data["amount"]} from {user.first_name} {user.last_name}.')
                 Notifications.objects.create(
                     device_id=receiving_user.device_id,
                     customer_id=receiving_user.customer_id,
@@ -350,6 +363,9 @@ def makeInternalTransfer(request, pk):
 
                 # Make the POST request to OneSignal
                 response = requests.post(url, headers=headers, data=json.dumps(payload))
+                send_fcm_notification(user.device_id,
+                                      'Charge Completed',
+                                      f'You have received {data["amount"]} from {user.first_name}.')
 
                 Notifications.objects.create(
                     device_id=user.device_id,
@@ -429,6 +445,16 @@ def makeExternalTransfer(request, pk):
                     reference=transaction_data['reference'],
                     credit=data['credit'],
                     user_balance=user.balance
+                )
+                send_fcm_notification(user.device_id,
+                                      'Charge Completed',
+                                      f'You have transferred {data["amount"]} to {data["receiver_name"]}.')
+
+                Notifications.objects.create(
+                    device_id=user.device_id,
+                    customer_id=user.customer_id,
+                    topic='Transfer',
+                    message=f'You have received {data["amount"]} from {user.first_name}.',
                 )
                 serializer = TransactionSerializer(bill, many=False)
                 print(serializer.data)
