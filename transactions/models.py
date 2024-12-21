@@ -41,6 +41,7 @@ class PayBill(models.Model):
     status = models.CharField(max_length=500, default='')  # Status of the transaction
     remark = models.TextField(blank=True, default='')  # Additional remarks about the transaction
     order_type = models.CharField(max_length=100, default='')  # Type of order/service
+    service_type = models.CharField(max_length=100, default='')  # Type of order/service
     mobile_network = models.CharField(max_length=500, blank=True, default='')  # Mobile network (if applicable)
     mobile_number = models.CharField(max_length=150, blank=True, default='')  # Beneficiary mobile number
     meter_token = models.TextField(blank=True, default='')  # Meter token (if applicable)
@@ -116,7 +117,7 @@ class PaymentDetails(models.Model):
     customer_id = models.CharField(max_length=100, default='')
     name = models.CharField(max_length=255, default='')
     email = models.EmailField(max_length=255)
-    phone_number = models.IntegerField(max_length=200, default=0)
+    phone_number = models.IntegerField( default=0)
     link = models.ForeignKey(PaymentLink, related_name="payment_details", on_delete=models.CASCADE)
     narration = models.CharField(default='')
     amount = models.IntegerField(default=0)

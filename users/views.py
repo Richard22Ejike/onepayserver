@@ -362,6 +362,7 @@ def createUser(request):
 @api_view(['POST'])
 def SignInUser(request):
     try:
+        print('signing in')
         data = request.data
         phone_number = data.get('phone_number')  # Assuming the phone_number is provided in the request data
         password = data.get('password')

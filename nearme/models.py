@@ -38,8 +38,6 @@ class ChatNearMeRoom(models.Model):
     sender_name = models.CharField(blank=True, default='', max_length=255)
     escrow_id = models.IntegerField(default=0)
     sender_by = models.IntegerField(default=0)
-    sender = models.ForeignKey(User, related_name='near_me_sent_messages', on_delete=models.CASCADE)
-    receiver = models.ForeignKey(User, related_name='near_me_received_messages', on_delete=models.CASCADE)
     last_message = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
 

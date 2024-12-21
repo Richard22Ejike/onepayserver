@@ -61,7 +61,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     created = models.DateTimeField(auto_now_add=True)
     bank_pin = models.CharField(max_length=10, default='')
     balance = models.FloatField(max_length=100, default=0.0)
-    device_id = models.CharField(max_length=800, default='')
+    device_id = models.CharField(max_length=900, default='')
     street = models.CharField(max_length=100, default='')
     city = models.CharField(max_length=100, default='')
     state = models.CharField(max_length=100, default='')

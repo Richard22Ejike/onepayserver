@@ -11,11 +11,34 @@ from sendgrid.helpers.mail import Mail
 from decouple import config
 
 from users.models import User, OneTimePassword
+def get_secret_file_path(filename):
+    """
+    Determines the full path of a secret file by checking common locations.
+    """
+    # Check if the file exists in the app's root directory
+    app_root_path = os.path.join(os.getcwd(), filename)
+    if os.path.exists(app_root_path):
+        return app_root_path
 
-service_account_file = r"C:\Users\Richard dev\PycharmProjects\OnePlusPay\users\followstars-252ef-firebase-adminsdk-ttwen-3cee3b3be7.json"
+    # Check if the file exists in the /etc/secrets directory
+    secrets_path = os.path.join('/etc/secrets', filename)
+    if os.path.exists(secrets_path):
+        return secrets_path
+
+    # Raise an error if the file is not found
+    raise FileNotFoundError(f"Secret file '{filename}' not found in app root or /etc/secrets.")
+
+
+secret_filename = "followstars-252ef-firebase-adminsdk-ttwen-266bdfbcdf.json"
+service_account_file = get_secret_file_path(secret_filename)
 credentials = service_account.Credentials.from_service_account_file(
     service_account_file, scopes=["https://www.googleapis.com/auth/firebase.messaging"]
 )
+# service_account_file = (r"C:\Users\Richard dev\PycharmProjects\OnePlusPay\users\followstars-252ef-firebase-adminsdk"
+#                         r"-ttwen-266bdfbcdf.json")
+# credentials = service_account.Credentials.from_service_account_file(
+#     service_account_file, scopes=["https://www.googleapis.com/auth/firebase.messaging"]
+# )
 
 
 def get_access_token():

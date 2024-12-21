@@ -36,18 +36,20 @@ configuration = onesignal.Configuration(
 )
 
 secret_key = config('SECRETKEY')
-user_id = "your_userid"  # Replace with actual user ID
-api_key = "your_apikey"  # Replace with actual API key
+user_id = config('CLUB_USERID')  # Replace with actual user ID
+api_key = config('CLUB_APIKey')  # Replace with actual API key
 
 # Bill Payments
 
 
 
 @api_view(['POST'])
-def makeBillPayment(request):
+def makeBillPayment(request, pk):
     try:
         data = request.data
         user = get_object_or_404(User, customer_id=data.get('customer_id', ''))
+        print(user_id)
+        print(api_key)
 
         # Step 1: Check Wallet Balance
         balance_url = f"https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID={user_id}&APIKey={api_key}"
@@ -56,11 +58,13 @@ def makeBillPayment(request):
         if balance_response.status_code != 200:
             return Response({"error": "Failed to fetch wallet balance", "details": balance_response.json()},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
         wallet_data = balance_response.json()
-        wallet_balance = float(wallet_data.get("balance", 0))
+        print(wallet_data)
+        wallet_balance = float(wallet_data.get("balance", "0").replace(",", ""))
 
         if wallet_balance < float(data['amount']):
+            print(float(data['amount']))
+            print(wallet_balance)
             return Response({"error": "Insufficient wallet balance"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Step 2: Verify Customer Details
@@ -98,7 +102,7 @@ def makeBillPayment(request):
             service_url = (f"https://www.nellobytesystems.com/APIAirtimeV1.asp?UserID={user_id}&APIKey={api_key}"
                            f"&MobileNetwork={data['mobile_network']}"
                            f"&Amount={data['amount']}"
-                           f"&MobileNumber={data['mobilenumber']}"
+                           f"&MobileNumber={data['mobile_number']}"
                            f"&RequestID={data['request_id']}"
                            f"&CallBackURL={data['callback_url']}")
         elif service_type == 'databundle':
@@ -128,7 +132,7 @@ def makeBillPayment(request):
         elif service_type == 'betting':
             service_url = (f"https://www.nellobytesystems.com/APIBettingV1.asp?UserID={user_id}&APIKey={api_key}"
                            f"&BettingCompany={data['betting_code']}"
-                           f"&CustomerID={data['customer_id']}"
+                           f"&CustomerID={data['betting_customer_id']}"
                            f"&Amount={data['amount']}"
                            f"&RequestID={data['request_id']}"
                            f"&CallBackURL={data['callback_url']}")
@@ -139,6 +143,7 @@ def makeBillPayment(request):
         service_response = requests.get(service_url)
 
         if service_response.status_code != 200:
+            print(service_response.json)
             return Response({"error": "Failed to complete the transaction", "details": service_response.json()},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -148,7 +153,7 @@ def makeBillPayment(request):
         # Step 5: Query Transaction
         query_url = f"https://www.nellobytesystems.com/APIQueryV1.asp?UserID={user_id}&APIKey={api_key}&OrderID={order_id}"
         query_response = requests.get(query_url)
-
+        print(query_response.json)
         if query_response.status_code != 200:
             return Response({"error": "Failed to query transaction", "details": query_response.json()},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -162,11 +167,12 @@ def makeBillPayment(request):
             customer_id=data.get('customer_id', ''),
             amount=data['amount'],
             operator_id=data.get('operator_id', ''),
-            order_id=order_id,
+            order_id=order_id or '',
             meter_type=data.get('meter_type', ''),
             device_number=data.get('device_number', ''),
             status=transaction_data.get('status', ''),
             remark=transaction_data.get('remark', ''),
+            service_type=data.get('service_type', ''),
             order_type=data.get('order_type', ''),
             mobile_network=data.get('mobile_network', ''),
             mobile_number=data.get('mobile_number', ''),
@@ -189,13 +195,16 @@ def makeBillPayment(request):
             customer_id=user.customer_id,
             user_balance=user.balance
         )
+        
 
         serializer = PayBillSerializer(paybill, many=False)
+        print(serializer.data)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     except requests.exceptions.RequestException as e:
         return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     except Exception as e:
+        print(str(e))
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
