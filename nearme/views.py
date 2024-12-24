@@ -238,7 +238,6 @@ def create_or_get_chatroom(request):
         )
 
 
-
 @api_view(['GET'])
 def getNearMeProducts(request, pk):
     print('friends')

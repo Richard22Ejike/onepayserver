@@ -977,6 +977,7 @@ def handle_charge_completed(data):
                               f'Phone = {customer_phone.split(":::")[0].strip()},'
                               f' Email = {customer_email}',
                     account_id=user.customer_id,
+                    user_balance=user.balance,
                     reference=generate_random_id(20),
                     credit=True,
                 )
@@ -999,10 +1000,10 @@ def handle_charge_completed(data):
                     narration=f'',
                     account_id=user.customer_id,
                     reference=flw_ref,
+                    user_balance=user.balance,
                     credit=True,
                 )
                 print(f"Updated {user.first_name}'s balance to {user.balance}")
-
 
                 send_fcm_notification(user.device_id,
                                       'Charge Completed',
@@ -1023,67 +1024,7 @@ def handle_charge_completed(data):
         print("Phone number or amount missing in the webhook data.")
 
 
-def send_notification(receiving_user, amount, data):
-    # OneSignal Configuration
-    # Ensure this is set in your Django settings
-    # Initialize the OneSignal API client
-    url = "https://api.onesignal.com/notifications"
 
-    # Payload to be sent in the POST request
-    payload = {
-        "app_id": configuration.app_key,
-        "target_channel": "push",
-
-        "contents": {
-            "en": f'You have received {amount} NGN from {data.get("narration", "someone")}.',  # English Message
-            "es": "Spanish Message"  # Spanish Message
-        },
-        "headings": {
-            "en": "Payment made"
-        },
-
-        "data": {
-            "custom_key": "custom_value"
-        },
-        "priority": 10,
-        "isAndroid": True,
-        "include_subscription_ids": [receiving_user.device_id]  # Sending to subscribed users
-    }
-
-    # Headers for the POST request
-    headers = {
-        "Authorization": f"Basic {configuration.api_key}",  # Include the API key
-        "accept": "application/json",  # Accept JSON responses
-        "content-type": "application/json"  # Send JSON request body
-    }
-    receiving_user.notification_number += 1
-    receiving_user.save()
-    # Make the POST request to OneSignal
-    response = requests.post(url, headers=headers, data=json.dumps(payload))
-    Notifications.objects.create(
-        device_id=receiving_user.device_id,
-        customer_id=receiving_user.customer_id,
-        topic='Transfer',
-        message=f'You have received {amount} NGN from {data.get("narration", "someone")}.',
-    )
-    # Output the response from OneSignal
-    print(f"Status Code: {response.status_code}")
-    print(f"Response Body: {response.json()}")
-    with onesignal.ApiClient(configuration) as api_client:
-        # Create an instance of the API class
-        api_instance = DefaultApi(api_client)
-        notification = Notification(
-            app_id='56618190-490a-4dc6-af2e-71ea67697f99',
-            include_player_ids=[receiving_user.device_id],  # Make sure the user has a device ID
-            contents={"en": f'You have received {amount} NGN from {data.get("narration", "someone")}.'}
-        )
-
-        try:
-            # Send notification
-            api_response = api_instance.create_notification(notification)
-            print(api_response)
-        except onesignal.ApiException as e:
-            print(f"Exception when calling DefaultApi->create_notification: {e}")
 
 
 def handle_transfer_success(data):

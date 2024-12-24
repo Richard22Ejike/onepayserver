@@ -191,7 +191,7 @@ def makeBillPayment(request, pk):
             narration='bill purchase',
             account_id=data.get('account_id', ''),
             bank=data.get('bank', ''),
-            credit=data.get('credit', 0),
+            credit=False,
             customer_id=user.customer_id,
             user_balance=user.balance
         )
@@ -265,7 +265,7 @@ def makeInternalTransfer(request, pk):
                     narration=data['narration'],
                     account_id=user.account_id,
                     bank='OnePlug',
-                    credit=data.get('credit', True),
+                    credit=True,
                     customer_id=user.customer_id,
                     user_balance=user.balance
 
@@ -1023,6 +1023,7 @@ def fundAccountWithCard(request, pk):
                 account_id=user.account_id,
                 reference=response_data.get('data', {}).get('reference', ''),
                 bank=user.bank_name,
+                user_balance=user.balance,
             )
 
             # Serialize the transaction data and return it
