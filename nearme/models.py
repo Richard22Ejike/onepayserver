@@ -36,6 +36,8 @@ class ChatNearMeRoom(models.Model):
     chat_id = models.CharField(max_length=255, default='')
     sender_image = models.CharField(blank=True, default='', max_length=255)
     sender_name = models.CharField(blank=True, default='', max_length=255)
+    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)
     escrow_id = models.IntegerField(default=0)
     sender_by = models.IntegerField(default=0)
     last_message = models.TextField()

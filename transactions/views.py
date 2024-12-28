@@ -39,8 +39,8 @@ secret_key = config('SECRETKEY')
 user_id = config('CLUB_USERID')  # Replace with actual user ID
 api_key = config('CLUB_APIKey')  # Replace with actual API key
 
-# Bill Payments
 
+# Bill Payments
 
 
 @api_view(['POST'])
@@ -70,11 +70,13 @@ def makeBillPayment(request, pk):
         # Step 2: Verify Customer Details
         service_type = data.get('service_type')
         name = ""
-
+        print(f"&ElectricCompany={data['electric_company_code']}"
+                f"&meterno={data['meter_no']}")
         if service_type == 'electricity':
-            verify_url = (f"https://www.nellobytesystems.com/APIVerifyElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
-                          f"&ElectricCompany={data['electric_company_code']}"
-                          f"&meterno={data['meter_no']}")
+            verify_url = (
+                f"https://www.nellobytesystems.com/APIVerifyElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
+                f"&ElectricCompany={data['electric_company_code']}"
+                f"&meterno={data['meter_no']}")
         elif service_type == 'cabletv':
             verify_url = (f"https://www.nellobytesystems.com/APIVerifyCableTVV1.0.asp?UserID={user_id}&APIKey={api_key}"
                           f"&cabletv={data['cable_tv_code']}"
@@ -95,6 +97,7 @@ def makeBillPayment(request, pk):
                                 status=status.HTTP_400_BAD_REQUEST)
 
             verify_data = verify_response.json()
+            print(verify_response.json())
             name = verify_data.get('customer_name', '')
 
         # Step 3: Determine Service URL
@@ -143,23 +146,24 @@ def makeBillPayment(request, pk):
         service_response = requests.get(service_url)
 
         if service_response.status_code != 200:
-            print(service_response.json)
+            print('failed')
+            print(service_response.json())
             return Response({"error": "Failed to complete the transaction", "details": service_response.json()},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         service_data = service_response.json()
+        print(service_response.json())
         order_id = service_data.get("orderid")
 
         # Step 5: Query Transaction
         query_url = f"https://www.nellobytesystems.com/APIQueryV1.asp?UserID={user_id}&APIKey={api_key}&OrderID={order_id}"
         query_response = requests.get(query_url)
-        print(query_response.json)
+        print(query_response.json())
         if query_response.status_code != 200:
             return Response({"error": "Failed to query transaction", "details": query_response.json()},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         transaction_data = query_response.json()
-
         # Step 6: Create PayBill Entry
         paybill = PayBill.objects.create(
             name=name,
@@ -169,7 +173,7 @@ def makeBillPayment(request, pk):
             operator_id=data.get('operator_id', ''),
             order_id=order_id or '',
             meter_type=data.get('meter_type', ''),
-            device_number=data.get('device_number', ''),
+            device_number=data.get('device_number', '') or '',
             status=transaction_data.get('status', ''),
             remark=transaction_data.get('remark', ''),
             service_type=data.get('service_type', ''),
@@ -187,7 +191,7 @@ def makeBillPayment(request, pk):
             receiver_name=user.first_name,
             amount=data['amount'],
             bank_code=data.get('bank_code', ''),
-            account_number=data.get('device_number', ''),
+            account_number=data.get('device_number', '') or '',
             narration='bill purchase',
             account_id=data.get('account_id', ''),
             bank=data.get('bank', ''),
@@ -210,6 +214,68 @@ def makeBillPayment(request, pk):
         serializer = PayBillSerializer(paybill, many=False)
         print(serializer.data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    except requests.exceptions.RequestException as e:
+        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except Exception as e:
+        print(str(e))
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def verifyBillPayment(request):
+    try:
+        data = request.data
+        print(user_id)
+        print(api_key)
+        # Step 2: Verify Customer Details
+        service_type = data.get('service_type')
+        balance_url = f"https://www.nellobytesystems.com/APIWalletBalanceV1.asp?UserID={user_id}&APIKey={api_key}"
+        balance_response = requests.get(balance_url)
+
+        if balance_response.status_code != 200:
+            return Response({"error": "Failed to fetch wallet balance", "details": balance_response.json()},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        wallet_data = balance_response.json()
+        print(wallet_data)
+        wallet_balance = float(wallet_data.get("balance", "0").replace(",", ""))
+
+        if wallet_balance < float(0):
+            print(float(0))
+            print(wallet_balance)
+            return Response({"error": "Insufficient wallet balance"}, status=status.HTTP_400_BAD_REQUEST)
+        print('verifying')
+        if service_type == 'electricity':
+            verify_url = (
+                f"https://www.nellobytesystems.com/APIVerifyElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
+                f"&ElectricCompany={data['electric_company_code']}"
+                f"&meterno={data['meter_no']}")
+        elif service_type == 'cabletv':
+            verify_url = (f"https://www.nellobytesystems.com/APIVerifyCableTVV1.0.asp?UserID={user_id}&APIKey={api_key}"
+                          f"&cabletv={data['cable_tv_code']}"
+                          f"&smartcardno={data['smart_card_no']}")
+        elif service_type == 'betting':
+            verify_url = (f"https://www.nellobytesystems.com/APIVerifyBettingV1.asp?UserID={user_id}&APIKey={api_key}"
+                          f"&BettingCompany={data['betting_code']}"
+                          f"&CustomerID={data['betting_customer_id']}")
+        else:
+            # For airtime and data, no verification is needed
+            name = 'airtime' if service_type == 'airtime' else 'data'
+            verify_url = None
+
+        if verify_url:
+            verify_response = requests.get(verify_url)
+            if verify_response.status_code != 200:
+                return Response({"error": "Failed to verify customer details", "details": verify_response.json()},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            verify_data = verify_response.json()
+            name = verify_data.get('customer_name', '')
+            print(verify_response.json())
+        else:
+            return Response({"error": "Name not found"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response({"name": name}, status=status.HTTP_200_OK)
 
     except requests.exceptions.RequestException as e:
         return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

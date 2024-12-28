@@ -5,6 +5,7 @@ from . import consumer
 urlpatterns = [
     path('transaction/get-all-transactions/', views.getTransaction),
     path('transaction/make-bill-payment/<str:pk>/', views.makeBillPayment),
+    path('transaction/verify-bill-payment/', views.verifyBillPayment),
     path('transaction/make-external-transfer/<str:pk>/', views.makeExternalTransfer),
     path('transaction/make-internal-transfer/<str:pk>/', views.makeInternalTransfer),
     path('transaction/fund-account-with-card/<str:pk>/', views.fundAccountWithCard),

@@ -11,7 +11,7 @@ class Transaction(models.Model):
     customer_id = models.CharField(max_length=100, default='')
     account_number = models.CharField(max_length=200, default='')  # The recipient's account number
     amount = models.IntegerField(default=0)  # The amount to be transferred
-    currency = models.CharField(max_length=10, default='NGN')  # The currency of the transfer
+    currency = models.CharField(max_length=100, default='NGN')  # The currency of the transfer
     narration = models.TextField(default='')  # The narration for the transfer
     transaction_fee = models.IntegerField(default=0)
     user_balance = models.IntegerField(default=0)
@@ -30,13 +30,13 @@ class Transaction(models.Model):
 
 class PayBill(models.Model):
     name = models.CharField(max_length=200, default='')
-    customer_id = models.CharField(max_length=100, default='')
-    account_id = models.CharField(max_length=150, default='')  # Customer identifier
+    customer_id = models.CharField(max_length=1000, default='')
+    account_id = models.CharField(max_length=1050, default='')  # Customer identifier
     amount = models.DecimalField(max_digits=100, decimal_places=2, default=0)  # Amount for the service
-    operator_id = models.CharField(max_length=200, default='')  # Type of service
-    order_id = models.CharField(max_length=500, default='')  # Unique order identifier
-    meter_type = models.CharField(max_length=500, default='')  # Meter type (if applicable)
-    device_number = models.CharField(max_length=100, blank=True, default='')  # Device number or smart card number
+    operator_id = models.CharField(max_length=2000, default='')  # Type of service
+    order_id = models.CharField(max_length=5000, default='')  # Unique order identifier
+    meter_type = models.CharField(max_length=5000, default='')  # Meter type (if applicable)
+    device_number = models.CharField(max_length=1000, blank=True, default='')  # Device number or smart card number
     order_date = models.DateTimeField(auto_now_add=True)  # Order date
     status = models.CharField(max_length=500, default='')  # Status of the transaction
     remark = models.TextField(blank=True, default='')  # Additional remarks about the transaction
@@ -80,7 +80,7 @@ class Card(models.Model):
 
 
 class Notifications(models.Model):
-    device_id = models.CharField(max_length=100, default='')
+    device_id = models.CharField(max_length=800, default='')
     customer_id = models.CharField(max_length=100, default='')
     topic = models.CharField(max_length=100, default='')
     message = models.CharField(max_length=500, )
@@ -172,8 +172,8 @@ class ChatMessage(models.Model):
     escrow_id = models.IntegerField(default=0)
     chat_id = models.CharField(default='')
     sender_by = models.IntegerField(default=0)
-    sender = models.ForeignKey(User, related_name='sent_messages', on_delete=models.CASCADE)
-    receiver = models.ForeignKey(User, related_name='received_messages', on_delete=models.CASCADE)
+    sender = models.ForeignKey(User, related_name='sent_message', on_delete=models.CASCADE)
+    receiver = models.ForeignKey(User, related_name='received_message', on_delete=models.CASCADE)
     message = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
