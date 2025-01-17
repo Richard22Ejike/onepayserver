@@ -10,10 +10,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from onesignal.api import default_api
-from onesignal.api.default_api import DefaultApi
-from onesignal.model.notification import Notification
-from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -85,49 +81,49 @@ def getUsers(request):
 @api_view(['GET'])
 def addUsers(request):
     data = [
-        {'id': 6,
-         'password': 'pbkdf2_sha256$600000$gYkImkwZuuSLzyNQLWJIIe$77BhpJwZjgiv53sdoJJvN///suomDaZNLMs3b1CReIc=',
-         'last_login': None,
-         'username': 'joshua johnson',
-         'email': 'am.joshuajohnson@gmail.com',
-         'first_name': 'Joshua',
-         'last_name': 'Johnson',
-         'phone_number': '07034534116',
-         'image': 'https://res.cloudinary.com/donpd3pem/image/upload/v1729853868/JGCP95921729800783244239920/qlmcli9obqecxzt8tbnf.jpg',
-         'is_staff': False,
-         'is_superuser': False,
-         'is_active': False,
-         'is_verified': False,
-         'status': False,
-         'customer_id': 'JGCP95921729800783244239920',
-         'account_id': '5dijuhwqw3mewbt7n',
-         'organization_id': '5dijuhwqw',
-         'customer_type': 'Personal',
-         'bvn': '22167494876',
-         'account_number': '9917158241',
-         'escrow_fund': 0.0,
-         'bank_name': 'Cashconnect Microfinance Bank',
-         'updated': '2024-10-25T14:04:23.484552Z',
-         'created': '2024-10-24T20:13:04.830740Z',
-         'bank_pin': '555555',
-         'balance': 2407.0,
-         'device_id': '7cc8cb05-d486-4932-9a69-908e98a510f9',
-         'street': '5dijuhwqw',
-         'city': '5dijuhwqw',
-         'state': '5dijuhwqw',
-         'country': '5dijuhwqw',
-         'postal_code': '5dijuhwqw',
-         'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzI5ODY1MzYzLCJp'
-                         'YXQiOjE3Mjk4NjUwNjMsImp0aSI6IjM1ZDcxZTg5ZTIwMTRkZmZiNjdlOWY3NjkwNTgwNmJlIiwidXNlcl9pZCI6Nn0.'
-                         'F1Pkp7FW_Uy_YHl5sjfpXDACdemCFBZnVmwNB2bOlnU',
-         'refresh_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTcyOTk1MTQ2My'
-                          'wiaWF0IjoxNzI5ODY1MDYzLCJqdGkiOiJiNDZmYTY4ZjVkMmY0NDUwYjIwZmJmYTJjNTY1OGZiNiIsInVzZXJfaWQiOj'
-                          'Z9.jZitoxHraIeIyAMgAydRyXjR2rDjN7IHt-ExXdjZPGg',
-         'notification_number': 0,
-         'kyc_tier': 0,
-         'groups': [],
-         'date_of_birth': '1998/06/19',
-         'user_permissions': []},
+        # {'id': 6,
+        #  'password': 'pbkdf2_sha256$600000$gYkImkwZuuSLzyNQLWJIIe$77BhpJwZjgiv53sdoJJvN///suomDaZNLMs3b1CReIc=',
+        #  'last_login': None,
+        #  'username': 'joshua johnson',
+        #  'email': 'am.joshuajohnson@gmail.com',
+        #  'first_name': 'Joshua',
+        #  'last_name': 'Johnson',
+        #  'phone_number': '07034534116',
+        #  'image': 'https://res.cloudinary.com/donpd3pem/image/upload/v1729853868/JGCP95921729800783244239920/qlmcli9obqecxzt8tbnf.jpg',
+        #  'is_staff': False,
+        #  'is_superuser': False,
+        #  'is_active': False,
+        #  'is_verified': False,
+        #  'status': False,
+        #  'customer_id': 'JGCP95921729800783244239920',
+        #  'account_id': '5dijuhwqw3mewbt7n',
+        #  'organization_id': '5dijuhwqw',
+        #  'customer_type': 'Personal',
+        #  'bvn': '22167494876',
+        #  'account_number': '9917158241',
+        #  'escrow_fund': 0.0,
+        #  'bank_name': 'Cashconnect Microfinance Bank',
+        #  'updated': '2024-10-25T14:04:23.484552Z',
+        #  'created': '2024-10-24T20:13:04.830740Z',
+        #  'bank_pin': '555555',
+        #  'balance': 2407.0,
+        #  'device_id': '7cc8cb05-d486-4932-9a69-908e98a510f9',
+        #  'street': '5dijuhwqw',
+        #  'city': '5dijuhwqw',
+        #  'state': '5dijuhwqw',
+        #  'country': '5dijuhwqw',
+        #  'postal_code': '5dijuhwqw',
+        #  'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzI5ODY1MzYzLCJp'
+        #                  'YXQiOjE3Mjk4NjUwNjMsImp0aSI6IjM1ZDcxZTg5ZTIwMTRkZmZiNjdlOWY3NjkwNTgwNmJlIiwidXNlcl9pZCI6Nn0.'
+        #                  'F1Pkp7FW_Uy_YHl5sjfpXDACdemCFBZnVmwNB2bOlnU',
+        #  'refresh_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTcyOTk1MTQ2My'
+        #                   'wiaWF0IjoxNzI5ODY1MDYzLCJqdGkiOiJiNDZmYTY4ZjVkMmY0NDUwYjIwZmJmYTJjNTY1OGZiNiIsInVzZXJfaWQiOj'
+        #                   'Z9.jZitoxHraIeIyAMgAydRyXjR2rDjN7IHt-ExXdjZPGg',
+        #  'notification_number': 0,
+        #  'kyc_tier': 0,
+        #  'groups': [],
+        #  'date_of_birth': '1998/06/19',
+        #  'user_permissions': []},
         {
             "id": 148,
             "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
@@ -169,47 +165,47 @@ def addUsers(request):
             "groups": [],
             "user_permissions": []
         },
-        {
-            "id": 149,
-            "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
-            "last_login": None,
-            "username": "richard",
-            "email": "richard.ekene@aun.edu.ng",
-            "first_name": "Richard Ekene",
-            "last_name": "Ejike",
-            "phone_number": "09044444889",
-            "image": "richard",
-            "is_staff": False,
-            "is_superuser": False,
-            "is_active": False,
-            "is_verified": False,
-            "status": False,
-            "customer_id": "FLW-f75719ff079f4b7684fe7e2238829771",
-            "account_id": "vcr4btssh2px4j4nz",
-            "organization_id": "fgdfggadff",
-            "customer_type": "personal",
-            "bvn": "22398644895",
-            "account_number": "8548510800",
-            "escrow_fund": 0.0,
-            "bank_name": "WEMA BANK",
-            "updated": "2024-09-23T14:50:28.505760Z",
-            "created": "2024-09-23T14:50:28.505760Z",
-            "bank_pin": "555555",
-            "balance": 50000.0,
-            "device_id": " gfdgf",
-            "street": "dgs",
-            "city": "gs",
-            "state": "sg",
-            "country": "sfg",
-            "postal_code": "sfg",
-            "access_token": "c xv",
-            "refresh_token": " vvsvsfv",
-            "notification_number": 0,
-            "kyc_tier": 0,
-            'date_of_birth': '1998/06/19',
-            "groups": [],
-            "user_permissions": []
-        }
+        # {
+        #     "id": 149,
+        #     "password": "pbkdf2_sha256$600000$7qMDojYLEswsial4E4gUWX$hHskGFvLPgxcAtTEy24DhuD4/xkLVRhWQ4McG7MN+Yo=",
+        #     "last_login": None,
+        #     "username": "richard",
+        #     "email": "richard.ekene@aun.edu.ng",
+        #     "first_name": "Richard Ekene",
+        #     "last_name": "Ejike",
+        #     "phone_number": "09044444889",
+        #     "image": "richard",
+        #     "is_staff": False,
+        #     "is_superuser": False,
+        #     "is_active": False,
+        #     "is_verified": False,
+        #     "status": False,
+        #     "customer_id": "FLW-f75719ff079f4b7684fe7e2238829771",
+        #     "account_id": "vcr4btssh2px4j4nz",
+        #     "organization_id": "fgdfggadff",
+        #     "customer_type": "personal",
+        #     "bvn": "22398644895",
+        #     "account_number": "8548510800",
+        #     "escrow_fund": 0.0,
+        #     "bank_name": "WEMA BANK",
+        #     "updated": "2024-09-23T14:50:28.505760Z",
+        #     "created": "2024-09-23T14:50:28.505760Z",
+        #     "bank_pin": "555555",
+        #     "balance": 50000.0,
+        #     "device_id": " gfdgf",
+        #     "street": "dgs",
+        #     "city": "gs",
+        #     "state": "sg",
+        #     "country": "sfg",
+        #     "postal_code": "sfg",
+        #     "access_token": "c xv",
+        #     "refresh_token": " vvsvsfv",
+        #     "notification_number": 0,
+        #     "kyc_tier": 0,
+        #     'date_of_birth': '1998/06/19',
+        #     "groups": [],
+        #     "user_permissions": []
+        # }
     ]
 
     added_users = []
@@ -823,6 +819,7 @@ def deleteUser(request, pk):
 
 
 # Create your views here.
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def ChangePin(request, pk):
     data = request.data
@@ -839,7 +836,7 @@ def ChangePin(request, pk):
 
     return Response(serializer.data)
 
-
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def SetPin(request, pk):
     data = request.data

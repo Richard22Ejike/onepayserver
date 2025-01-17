@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import csrf_exempt
 import onesignal
 import requests
@@ -9,7 +10,7 @@ from django.shortcuts import get_object_or_404
 from onesignal.api import default_api
 from onesignal.model.notification import Notification
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from transactions.models import Transaction, PayBill, PaymentDetails, Card, Notifications, Escrow, ChatMessage, \
     PaymentLink
@@ -41,8 +42,7 @@ api_key = config('CLUB_APIKey')  # Replace with actual API key
 
 
 # Bill Payments
-
-
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def makeBillPayment(request, pk):
     try:
@@ -71,7 +71,7 @@ def makeBillPayment(request, pk):
         service_type = data.get('service_type')
         name = ""
         print(f"&ElectricCompany={data['electric_company_code']}"
-                f"&meterno={data['meter_no']}")
+              f"&meterno={data['meter_no']}")
         if service_type == 'electricity':
             verify_url = (
                 f"https://www.nellobytesystems.com/APIVerifyElectricityV1.asp?UserID={user_id}&APIKey={api_key}"
@@ -153,6 +153,12 @@ def makeBillPayment(request, pk):
 
         service_data = service_response.json()
         print(service_response.json())
+        meter_token = service_data.get('meter_token', '')
+
+        # Check for token presence in electricity service
+        if service_type == 'electricity' and meter_token == '':
+            return Response({"error": "Electricity purchase failed: token is missing"}, status=status.HTTP_400_BAD_REQUEST)
+
         order_id = service_data.get("orderid")
 
         # Step 5: Query Transaction
@@ -164,6 +170,7 @@ def makeBillPayment(request, pk):
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         transaction_data = query_response.json()
+
         # Step 6: Create PayBill Entry
         paybill = PayBill.objects.create(
             name=name,
@@ -180,48 +187,48 @@ def makeBillPayment(request, pk):
             order_type=data.get('order_type', ''),
             mobile_network=data.get('mobile_network', ''),
             mobile_number=data.get('mobile_number', ''),
-            meter_token=transaction_data.get('meter_token', ''),
+            meter_token=meter_token,
             wallet_balance=wallet_balance
         )
 
+        # Update User Balance
         user.balance -= data['amount']
         user.save()
+
+        # Create Transaction with Dynamic Narration
+        narration = ""
+        if service_type == 'electricity':
+            narration = f"Electricity purchase: Meter Token - {meter_token}, Meter No - {data['meter_no']}, Name - {name}."
+        elif service_type == 'cabletv':
+            narration = f"Cable TV purchase: Package - {data['package_code']}, Smart Card - {data['smart_card_no']}."
+        elif service_type == 'airtime':
+            narration = f"Airtime purchase: Mobile Number - {data['mobile_number']}."
+        elif service_type == 'databundle':
+            narration = f"Data Bundle purchase: Plan - {data['data_plan']}, Mobile Number - {data['mobile_number']}."
+        elif service_type == 'betting':
+            narration = f"Betting purchase: Betting Company - {data['betting_code']}, Customer ID - {data['betting_customer_id']}."
 
         Transaction.objects.create(
             receiver_name=user.first_name,
             amount=data['amount'],
             bank_code=data.get('bank_code', ''),
-            account_number=data.get('device_number', '') or '',
-            narration='bill purchase',
+            account_number=user.account_number or '',
+            narration=narration,
             account_id=data.get('account_id', ''),
             bank=data.get('bank', ''),
             credit=False,
             customer_id=user.customer_id,
             user_balance=user.balance
         )
+
         amount = data['amount']
-        send_fcm_notification(user.device_id,
-                              'Charge Completed',
-                              f'You have purchased {amount} NGNfor bill payment.')
-
-        Notifications.objects.create(
-            device_id=user.device_id,
-            customer_id=user.customer_id,
-            topic='Transfer',
-            message=f'You have purchased {amount} NGN for bill payment.',
-        )
-
-        serializer = PayBillSerializer(paybill, many=False)
-        print(serializer.data)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    except requests.exceptions.RequestException as e:
-        return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({"message": f"{service_type} purchase of NGN{amount} was successful"}, status=status.HTTP_201_CREATED)
     except Exception as e:
         print(str(e))
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def verifyBillPayment(request):
     try:
@@ -285,6 +292,7 @@ def verifyBillPayment(request):
 
 
 # Transfers
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def makeInternalTransfer(request, pk):
     try:
@@ -454,6 +462,7 @@ def makeInternalTransfer(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def makeExternalTransfer(request, pk):
     try:
@@ -534,6 +543,7 @@ def makeExternalTransfer(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getTransaction(request):
     transactions = Transaction.objects.all()
@@ -541,6 +551,7 @@ def getTransaction(request):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getTransactions(request, pk):
     transactions = Transaction.objects.filter(customer_id=pk).order_by('-id')
@@ -549,6 +560,7 @@ def getTransactions(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def findAccountbyId(request, pk):
     data = request.data
@@ -558,6 +570,7 @@ def findAccountbyId(request, pk):
 
 
 # Notifications
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getNotifications(request, pk):
     notifications = Notifications.objects.filter(customer_id=pk)
@@ -565,6 +578,7 @@ def getNotifications(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def SentNotifications(request):
     data = request.data
@@ -592,6 +606,7 @@ def SentNotifications(request):
 
 
 # Escrows
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getUserEscrows(request, pk):
     try:
@@ -602,6 +617,7 @@ def getUserEscrows(request, pk):
         return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def CreateEscrow(request, pk):
     try:
@@ -683,6 +699,7 @@ def CreateEscrow(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def EditEscrow(request, pk):
     try:
@@ -697,6 +714,7 @@ def EditEscrow(request, pk):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def EmailEscrow(request, pk):
     try:
@@ -712,6 +730,7 @@ def EmailEscrow(request, pk):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getEscrows(request, pk):
     # Fetch the user's email based on the customer_id (pk)
@@ -736,6 +755,7 @@ def getEscrows(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def updateEscrows(request, pk):
     escrow = Escrow.objects.get(id=pk)
@@ -766,6 +786,7 @@ def updateEscrows(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def disputeEscrows(request, pk):
     escrow = Escrow.objects.get(id=pk)
@@ -776,6 +797,7 @@ def disputeEscrows(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def ReleaseEscrowsFund(request, pk):
     data = request.data
@@ -844,6 +866,7 @@ def ReleaseEscrowsFund(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def MakePaymentEscrows(request, pk):
     escrow_id = request.data.get('escrow_id')
@@ -876,6 +899,7 @@ def MakePaymentEscrows(request, pk):
 
 
 # Cards
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def SaveCard(request):
     data = request.data
@@ -893,6 +917,7 @@ def SaveCard(request):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getCards(request, pk):
     cards = Card.objects.filter(customer_id=pk)
@@ -947,6 +972,7 @@ def getCards2(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def IssueCard(request):
     try:
@@ -1020,6 +1046,19 @@ def IssueCard(request):
                 card_type=card_data.get('card_type', '')
             )
 
+            Transaction.objects.create(
+                receiver_name=user.first_name,
+                amount=data['amount'],
+                bank_code=data.get('bank_code', ''),
+                account_number=data.get('device_number', '') or '',
+                narration='bill purchase',
+                account_id=data.get('account_id', ''),
+                bank=data.get('bank', ''),
+                credit=False,
+                customer_id=user.customer_id,
+                user_balance=user.balance
+            )
+
             serializer = CardSerializer(card, many=False)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
     except requests.exceptions.RequestException as e:
@@ -1029,6 +1068,7 @@ def IssueCard(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def ChangePin(request, pk):
     data = request.data
@@ -1046,6 +1086,7 @@ def ChangePin(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def fundAccountWithCard(request, pk):
     try:
@@ -1105,6 +1146,7 @@ def fundAccountWithCard(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getCardDetails(request, pk):
     card = Card.objects.get(customer_id=pk)
@@ -1133,6 +1175,7 @@ def getCardDetails(request, pk):
         return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def WithDrawCard(request, pk):
     data = request.data
@@ -1151,6 +1194,7 @@ def WithDrawCard(request, pk):
 
 
 # PAYMENTLINK
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getPaymentLinks(request, pk):
     payment_links = PaymentLink.objects.filter(customer_id=pk).prefetch_related('payment_details')
@@ -1158,6 +1202,7 @@ def getPaymentLinks(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getPaymentLink(request, pk):
     paymentLink = PaymentLink.objects.get(link_id=pk)
@@ -1165,6 +1210,7 @@ def getPaymentLink(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def CreatePaymentLink(request):
     try:
@@ -1190,6 +1236,7 @@ def CreatePaymentLink(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def CreateCheckout(request):
     try:
@@ -1244,6 +1291,7 @@ def CreateCheckout(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['PUT'])
 def EditPaymentLink(request, pk):
     data = request.data
@@ -1262,7 +1310,7 @@ def EditPaymentLink(request, pk):
 
 
 # CHAT
-
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getChats(request, pk):
     messages = ChatMessage.objects.filter(escrow_id=pk)

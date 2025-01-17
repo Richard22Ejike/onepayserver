@@ -5,7 +5,8 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import F, FloatField
 from django.db.models.functions import Cast, Sqrt, Power
@@ -17,6 +18,7 @@ from transactions.serializers import ChatSerializer
 from users.models import User
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def CreateNearMeProduct(request, pk):
     try:
@@ -64,6 +66,7 @@ def CreateNearMeProduct(request, pk):
 
 
 # Create your views here.
+@permission_classes([IsAuthenticated])
 @api_view(['PUT', 'PATCH'])
 def edit_near_me_product(request, pk):
     try:
@@ -98,6 +101,7 @@ def edit_near_me_product(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def get_filtered_products(request):
     try:
@@ -153,6 +157,7 @@ def get_filtered_products(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def get_chat_ids(request, pk):
     try:
@@ -174,6 +179,7 @@ def get_chat_ids(request, pk):
         )
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def create_or_get_chatroom(request):
     """
@@ -238,6 +244,7 @@ def create_or_get_chatroom(request):
         )
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getNearMeProducts(request, pk):
     print('friends')
@@ -247,6 +254,7 @@ def getNearMeProducts(request, pk):
     return Response(serializer.data)
 
 
+@permission_classes([IsAuthenticated])
 @api_view(['GET'])
 def getChats(request, pk):
     messages = ChatMessage.objects.filter(chat_id=pk)
