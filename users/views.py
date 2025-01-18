@@ -983,7 +983,7 @@ def handle_charge_completed(data):
                 user = User.objects.get(phone_number=customer_phone)
 
                 # Add the charged amount to the user's account balance
-                user.balance += amount
+                user.balance += amount - 35
                 user.save()
                 Transaction.objects.create(
 

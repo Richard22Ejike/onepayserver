@@ -505,7 +505,7 @@ def makeExternalTransfer(request, pk):
 
                 with transaction.atomic():
                     # Decrease the sender's balance
-                    user.balance -= amount
+                    user.balance -= amount - 20
                     user.save()
                 transaction_data = response_data['data']
                 bill = Transaction.objects.create(

@@ -65,15 +65,19 @@ def CreateNearMeProduct(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# Create your views here.
 @permission_classes([IsAuthenticated])
 @api_view(['PUT', 'PATCH'])
 def edit_near_me_product(request, pk):
     try:
-        print('i see you')
         # Retrieve the product by primary key
         near_me_product = NearMeProduct.objects.get(pk=pk)
 
+        if request.data.get("status") == 'Delete':
+            near_me_product.delete()
+            return Response(
+                {"message": "Product deleted successfully."},
+                status=status.HTTP_200_OK
+            )
         # Update the product with the provided data
         serializer = NearMeProductSerializer(
             near_me_product, data=request.data, partial=True
