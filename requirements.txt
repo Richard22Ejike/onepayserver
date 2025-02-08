@@ -22,3 +22,4 @@ sendgrid==6.11.0
 python-decouple==3.8
 xhtml2pdf==0.2.16
 firebase-admin==6.6.0
+psycopg2-binary==2.9.10

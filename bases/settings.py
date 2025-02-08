@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     "corsheaders.middleware.CorsMiddleware",
@@ -89,11 +90,11 @@ CHANNEL_LAYERS = {
 }
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-#
+
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://oneplug_pay_databases_bl5o_user:I5dAZe6Vz7R1T5LykyXvOFb'
-                'OqTZiWH9v@dpg-ctjasr3qf0us739ak1vg-a.frankfurt-postgres.render.com/oneplug_pay_databases_bl5o',
+        default='postgresql://oneplug_database_user:k8uAmcquCbgBsy0R43tpctKA6wHc1eIK@dpg'
+                '-cuf5jkdumphs73atp63g-a.oregon-postgres.render.com/oneplug_database',
         conn_max_age=600,
         conn_health_checks=True,
     )
@@ -107,6 +108,9 @@ DATABASES = {
 #         'PASSWORD': 'onepluspay'
 #     }
 # }
+
+
+
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),

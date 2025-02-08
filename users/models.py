@@ -71,6 +71,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     refresh_token = models.CharField(max_length=800, default='')
     notification_number = models.IntegerField(default=0)
     kyc_tier = models.IntegerField(default=0)
+    referral_code = models.CharField(default='')
+    referral_id = models.CharField(default='')
     USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = ['first_name', 'last_name']
 

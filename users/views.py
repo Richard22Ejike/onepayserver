@@ -316,7 +316,8 @@ def createUser(request):
             account_id=generate_random_id(17),
             account_number=flutterwave_data['data']['account_number'],
             customer_id=flutterwave_data['data']['flw_ref'],
-            date_of_birth=data['dob']
+            date_of_birth=data['dob'],
+            referral_code=generate_random_id(9)
         )
 
         # Generate or get existing token for the user
