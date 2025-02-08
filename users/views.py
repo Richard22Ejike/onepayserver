@@ -214,10 +214,15 @@ def addUsers(request):
         try:
             existing_user = User.objects.get(phone_number=user_data['phone_number'])
             print(f"User with phone number {user_data['phone_number']} already exists.")
-            serializer = UserSerializer(data=user_data)
+
+            # Update the existing user instead of creating a new one
+            serializer = UserSerializer(existing_user, data=user_data, partial=True)
             if serializer.is_valid():
                 user = serializer.save()
                 added_users.append(user)
+            else:
+                print(serializer.errors)
+
         except User.DoesNotExist:
             serializer = UserSerializer(data=user_data)
             if serializer.is_valid():
