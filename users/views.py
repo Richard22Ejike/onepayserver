@@ -139,7 +139,7 @@ def addUsers(request):
             "is_active": False,
             "is_verified": False,
             "status": False,
-            "customer_id": "FLW-f75719ff079f4b7684fe7e2238829771",
+            "customer_id": "FLW-f75719ff079f4b7684fe7e22388296891",
             "account_id": "vcr4btssh2px4j4nz",
             "organization_id": "fgdfggadff",
             "customer_type": "personal",
