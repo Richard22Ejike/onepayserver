@@ -4,6 +4,10 @@ from . import consumer
 
 urlpatterns = [
     path('transaction/get-all-transactions/', views.getTransaction),
+    path('transaction/get-all-paybills/', views.getPayBill),
+    path('transaction/get-all-paymentlinks/', views.getPaymentLinks),
+    path('transaction/get-all-cards/', views.getCard),
+    path('transaction/get-all-escrows/', views.getEscrow),
     path('transaction/make-bill-payment/<str:pk>/', views.makeBillPayment),
     path('transaction/verify-bill-payment/', views.verifyBillPayment),
     path('transaction/make-external-transfer/<str:pk>/', views.makeExternalTransfer),
@@ -29,7 +33,7 @@ urlpatterns = [
     path('transaction/make-payment-escrows/<str:pk>/', views.MakePaymentEscrows),
     path('transaction/get-message/<str:pk>/', views.getChats),
     path('transaction/create-payment-link/', views.CreatePaymentLink),
-    path('transaction/get-payment-links/<str:pk>/', views.getPaymentLinks),
+    path('transaction/get-payment-links/<str:pk>/', views.getPaymentLinkss),
     path('transaction/create-checkout/', views.CreateCheckout),
     path('transaction/get-payment-link/<str:pk>/', views.getPaymentLink),
     path('transaction/edit-payment-link/<str:pk>/', views.EditPaymentLink),

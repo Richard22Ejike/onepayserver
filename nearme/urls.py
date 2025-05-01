@@ -4,6 +4,7 @@ from nearme import views
 urlpatterns = [
     # Near Me Product APIs
     path('near-me/create-product/<str:pk>/', views.CreateNearMeProduct, name='create_near_me_product'),
+    path('near-me/get-nearmes/', views.get_Near_Me_admin_Products, name='create_near_me_product'),
     path('near-me/edit-product/<str:pk>/', views.edit_near_me_product, name='edit_near_me_product'),
     path('near-me/get-product/<str:pk>/', views.getNearMeProducts, name='get_near_me_products'),
     path('near-me/get-filtered-products/', views.get_filtered_products, name='get_filtered_products'),

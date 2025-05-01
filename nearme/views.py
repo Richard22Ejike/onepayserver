@@ -19,6 +19,15 @@ from users.models import User
 
 
 @permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def get_Near_Me_admin_Products(request):
+    near_me_products = NearMeProduct.objects.all()
+    serializer = NearMeProductSerializer(near_me_products, many=True)
+    print(serializer.data)
+    return Response(serializer.data)
+
+
+@permission_classes([IsAuthenticated])
 @api_view(['POST'])
 def CreateNearMeProduct(request, pk):
     try:

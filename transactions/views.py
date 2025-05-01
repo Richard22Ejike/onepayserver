@@ -41,6 +41,43 @@ user_id = config('CLUB_USERID')  # Replace with actual user ID
 api_key = config('CLUB_APIKey')  # Replace with actual API key
 
 
+@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def getTransaction(request):
+    transactions = Transaction.objects.all()
+    serializer = TransactionSerializer(transactions, many=True)
+    return Response(serializer.data)
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def getCard(request):
+    transactions = Card.objects.all()
+    serializer = CardSerializer(transactions, many=True)
+    return Response(serializer.data)
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def getPayBill(request):
+    transactions = PayBill.objects.all()
+    serializer = PayBillSerializer(transactions, many=True)
+    return Response(serializer.data)
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def getEscrow(request):
+    transactions = Escrow.objects.all()
+    serializer = EscrowSerializer(transactions, many=True)
+    return Response(serializer.data)
+
+@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+def getPaymentLinks(request):
+    payment_links = PaymentLink.objects.prefetch_related('payment_details')
+    serializer = PaymentLinkSerializer(payment_links, many=True)
+    print(serializer.data)
+    return Response(serializer.data)
+
+
 # Bill Payments
 @permission_classes([IsAuthenticated])
 @api_view(['POST'])
@@ -543,12 +580,7 @@ def makeExternalTransfer(request, pk):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@permission_classes([IsAuthenticated])
-@api_view(['GET'])
-def getTransaction(request):
-    transactions = Transaction.objects.all()
-    serializer = TransactionSerializer(transactions, many=True)
-    return Response(serializer.data)
+
 
 
 @permission_classes([IsAuthenticated])
@@ -1196,7 +1228,7 @@ def WithDrawCard(request, pk):
 # PAYMENTLINK
 @permission_classes([IsAuthenticated])
 @api_view(['GET'])
-def getPaymentLinks(request, pk):
+def getPaymentLinkss(request, pk):
     payment_links = PaymentLink.objects.filter(customer_id=pk).prefetch_related('payment_details')
     serializer = PaymentLinkSerializer(payment_links, many=True)
     return Response(serializer.data)

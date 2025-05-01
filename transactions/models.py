@@ -75,6 +75,7 @@ class Card(models.Model):
     date_created = models.DateTimeField(auto_now_add=True)
     card_type = models.CharField(default='')
 
+
     def __str__(self):
         return f"{self.balance} - {self.card_number} - {self.email} - {self.tx_ref}"
 
@@ -117,7 +118,7 @@ class PaymentDetails(models.Model):
     customer_id = models.CharField(max_length=100, default='')
     name = models.CharField(max_length=255, default='')
     email = models.EmailField(max_length=255)
-    phone_number = models.IntegerField( default=0)
+    phone_number = models.IntegerField(default=0, max_length=255)
     link = models.ForeignKey(PaymentLink, related_name="payment_details", on_delete=models.CASCADE)
     narration = models.CharField(default='')
     amount = models.IntegerField(default=0)
@@ -172,8 +173,8 @@ class ChatMessage(models.Model):
     escrow_id = models.IntegerField(default=0)
     chat_id = models.CharField(default='')
     sender_by = models.IntegerField(default=0)
-    sender = models.ForeignKey(User, related_name='sent_message', on_delete=models.CASCADE)
-    receiver = models.ForeignKey(User, related_name='received_message', on_delete=models.CASCADE)
+    sender = models.ForeignKey(User, related_name='sent_message', on_delete=models.CASCADE, default=0)
+    receiver = models.ForeignKey(User, related_name='received_message', on_delete=models.CASCADE, default=1)
     message = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
 

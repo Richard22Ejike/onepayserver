@@ -20,7 +20,10 @@ import json
 import hmac
 import hashlib
 
+from nearme.serializers import NearMeProductSerializer
 from transactions.models import Transaction, Notifications, PaymentDetails
+from transactions.serializers import EscrowSerializer, PaymentLinkSerializer, PaymentDetailsSerializer, \
+    TransactionSerializer, PayBillSerializer, CardSerializer
 from .serializers import UserSerializer
 from .models import User, OneTimePassword, OneTimeOtp
 from .utils import send_email_to_user, GenerateOtp, send_sms, send_otp, send_fcm_notification
@@ -74,12 +77,391 @@ def getroutes(request):
 @api_view(['GET'])
 def getUsers(request):
     users = User.objects.all()
+    print('good3')
     serializer = UserSerializer(users, many=True)
+    print(serializer.data)
     return Response(serializer.data)
 
 
 @api_view(['GET'])
 def addUsers(request):
+    card = [
+  {
+    "card_id": "card001",
+    "account_id": "acc001",
+    "customer_id": "cust001",
+    "name": "John Visa",
+    "brand": "Visa",
+    "balance": 12000.0,
+    "card_number": "4111111111111111",
+    "cvv": "123",
+    "expiry_month": "12",
+    "expiry_year": "2026",
+    "email": "john@example.com",
+    "pin": "1234",
+    "currency": "NGN",
+    "tx_ref": "TXREF001"
+  },
+  {
+    "card_id": "card002",
+    "account_id": "acc002",
+    "customer_id": "cust002",
+    "name": "Jane MasterCard",
+    "brand": "MasterCard",
+    "balance": 7500.0,
+    "card_number": "5500000000000004",
+    "cvv": "456",
+    "expiry_month": "10",
+    "expiry_year": "2025",
+    "email": "jane@example.com",
+    "pin": "5678",
+    "currency": "NGN",
+    "tx_ref": "TXREF002"
+  },
+  {
+    "card_id": "card003",
+    "account_id": "acc003",
+    "customer_id": "cust003",
+    "name": "Alice Verve",
+    "brand": "Verve",
+    "balance": 3000.0,
+    "card_number": "5060990000000000",
+    "cvv": "789",
+    "expiry_month": "08",
+    "expiry_year": "2024",
+    "email": "alice@example.com",
+    "pin": "0000",
+    "currency": "NGN",
+    "tx_ref": "TXREF003"
+  }
+]
+    paybills = [
+  {
+    "name": "Electricity Bill",
+    "customer_id": "cust001",
+    "account_id": "acc001",
+    "amount": 1500.50,
+    "operator_id": "IKEDC",
+    "order_id": "ORD001",
+    "meter_type": "Prepaid",
+    "device_number": "1234567890",
+    "status": "Successful",
+    "remark": "Power purchase",
+    "order_type": "Electricity",
+    "service_type": "Utility"
+  },
+  {
+    "name": "DSTV Subscription",
+    "customer_id": "cust002",
+    "account_id": "acc002",
+    "amount": 6800.00,
+    "operator_id": "DSTV",
+    "order_id": "ORD002",
+    "meter_type": "N/A",
+    "device_number": "smart1234",
+    "status": "Pending",
+    "remark": "Monthly DSTV",
+    "order_type": "Cable",
+    "service_type": "Entertainment"
+  },
+  {
+    "name": "Airtime Recharge",
+    "customer_id": "cust003",
+    "account_id": "acc003",
+    "amount": 500.00,
+    "operator_id": "MTN",
+    "order_id": "ORD003",
+    "meter_type": "N/A",
+    "device_number": "08012345678",
+    "status": "Successful",
+    "remark": "Top-up",
+    "order_type": "Airtime",
+    "service_type": "Mobile"
+  }
+]
+    Transactions = [
+      {
+        "sender_account_number": "1234567890",
+        "bank": "First Bank",
+        "bank_code": "011",
+        "reference": "TXN123456A",
+        "account_id": "acc001",
+        "customer_id": "cust001",
+        "account_number": "9876543210",
+        "amount": 5000,
+        "currency": "NGN",
+        "narration": "Transfer for goods",
+        "transaction_fee": 50,
+        "user_balance": 9500,
+        "receiver_name": "John Doe"
+      },
+      {
+        "sender_account_number": "1234567891",
+        "bank": "GTBank",
+        "bank_code": "058",
+        "reference": "TXN123456B",
+        "account_id": "acc002",
+        "customer_id": "cust002",
+        "account_number": "9876543211",
+        "amount": 10000,
+        "currency": "NGN",
+        "narration": "Transfer for rent",
+        "transaction_fee": 100,
+        "user_balance": 20000,
+        "receiver_name": "Jane Smith"
+      },
+      {
+        "sender_account_number": "1234567892",
+        "bank": "Access Bank",
+        "bank_code": "044",
+        "reference": "TXN123456C",
+        "account_id": "acc003",
+        "customer_id": "cust003",
+        "account_number": "9876543212",
+        "amount": 7500,
+        "currency": "NGN",
+        "narration": "Loan repayment",
+        "transaction_fee": 75,
+        "user_balance": 5000,
+        "receiver_name": "Alice Brown"
+      }
+    ]
+    paymentdetails = [
+  {
+    "customer_id": "cust101",
+    "name": "Daniel Okoro",
+    "email": "daniel.okoro@example.com",
+    "phone_number": 8012345678,
+    "link": 1,
+    "narration": "Course enrollment",
+    "amount": 10000,
+    "payment_type": "Card"
+  },
+  {
+    "customer_id": "cust102",
+    "name": "Ifeoma Eze",
+    "email": "ifeoma.eze@example.com",
+    "phone_number": 8098765432,
+    "link": 2,
+    "narration": "E-book payment",
+    "amount": 2500,
+    "payment_type": "USSD"
+  },
+  {
+    "customer_id": "cust103",
+    "name": "Mike Ajayi",
+    "email": "mike.ajayi@example.com",
+    "phone_number": 8081122334,
+    "link": 3,
+    "narration": "Freelance job payment",
+    "amount": 50000,
+    "payment_type": "Bank Transfer"
+  }
+]
+    Escrow = [
+      {
+        "account_id": "acc201",
+        "customer_id": "cust201",
+        "escrow_description": "Web design project",
+        "escrow_name": "Website Redesign",
+        "escrow_Status": "Pending",
+        "payment_type": "Card",
+        "role": "Client",
+        "role_paying": "Client",
+        "estimated_days": "5",
+        "number_milestone": "2",
+        "milestone": "Initial deposit",
+        "reference": "ESCROW001",
+        "sender_name": "Chinedu Obasi",
+        "receiver_email": "uche@example.com",
+        "receiver_id": 501,
+        "currency": "NGN",
+        "link_url": "https://escrow.example.com/escrow001",
+        "make_payment": True,
+        "accepted": True,
+        "answered": True,
+        "amount": 70000,
+        "transaction_fee": 1000,
+        "dispute": "",
+        "is_disabled": False
+      },
+      {
+        "account_id": "acc202",
+        "customer_id": "cust202",
+        "escrow_description": "App development project",
+        "escrow_name": "Mobile App Phase 1",
+        "escrow_Status": "Completed",
+        "payment_type": "Bank Transfer",
+        "role": "Developer",
+        "role_paying": "Client",
+        "estimated_days": "14",
+        "number_milestone": "3",
+        "milestone": "Final milestone",
+        "reference": "ESCROW002",
+        "sender_name": "Amina Bello",
+        "receiver_email": "dev@example.com",
+        "receiver_id": 502,
+        "currency": "NGN",
+        "link_url": "https://escrow.example.com/escrow002",
+        "make_payment": True,
+        "accepted": True,
+        "answered": True,
+        "amount": 150000,
+        "transaction_fee": 2500,
+        "dispute": "None",
+        "is_disabled": False
+      },
+      {
+        "account_id": "acc203",
+        "customer_id": "cust203",
+        "escrow_description": "Logo Design",
+        "escrow_name": "Design Contract",
+        "escrow_Status": "Disputed",
+        "payment_type": "USSD",
+        "role": "Client",
+        "role_paying": "Client",
+        "estimated_days": "3",
+        "number_milestone": "1",
+        "milestone": "Single delivery",
+        "reference": "ESCROW003",
+        "sender_name": "Tunde Bakare",
+        "receiver_email": "logoartist@example.com",
+        "receiver_id": 503,
+        "currency": "NGN",
+        "link_url": "https://escrow.example.com/escrow003",
+        "make_payment": True,
+        "accepted": False,
+        "answered": True,
+        "amount": 20000,
+        "transaction_fee": 300,
+        "dispute": "Late delivery",
+        "is_disabled": False
+      }
+    ]
+
+    paymentlink = [
+          {
+        "account_id": "acc101",
+        "customer_id": "cust101",
+        "organization_id": "org001",
+        "environment": "live",
+        "description": "Payment for online course",
+        "name": "Online Course Fee",
+        "link_id": "plink001",
+        "country": "NG",
+        "currency": "NGN",
+        "link_url": "https://pay.example.com/plink001",
+        "amount": 10000,
+        "is_disabled": False
+      },
+      {
+        "account_id": "acc102",
+        "customer_id": "cust102",
+        "organization_id": "org002",
+        "environment": "test",
+        "description": "E-book purchase",
+        "name": "E-book Store",
+        "link_id": "plink002",
+        "country": "NG",
+        "currency": "NGN",
+        "link_url": "https://pay.example.com/plink002",
+        "amount": 2500,
+        "is_disabled": False
+      },
+      {
+        "account_id": "acc103",
+        "customer_id": "cust103",
+        "organization_id": "org003",
+        "environment": "live",
+        "description": "Freelance service payment",
+        "name": "Freelance Invoice",
+        "link_id": "plink003",
+        "country": "NG",
+        "currency": "NGN",
+        "link_url": "https://pay.example.com/plink003",
+        "amount": 50000,
+        "is_disabled": True
+          }
+        ]
+    Nearme = [
+      {
+        "product_id": "prod001",
+        "product_category": "Electronics",
+        "product_name": "Samsung TV",
+        "product_images": ["tv_front.jpg", "tv_side.jpg"],
+        "customer_id": "cust301",
+        "video": "tv_demo.mp4",
+        "title": "43 inch Smart TV",
+        "location": "Lagos",
+        "lat": "6.5244",
+        "long": "3.3792",
+        "brand": "Samsung",
+        "type": "LED",
+        "condition": "New",
+        "description": "Smart TV with Wi-Fi and HDMI",
+        "price": "250000",
+        "delivery": "Available",
+        "status": "Available",
+        "chat_id": [],
+        "seller_name": "Emeka Obi",
+        "seller_image": "emeka.jpg",
+        "seller_phone_number": "08031234567",
+        "seller_email": "emeka@example.com",
+        "seller_id": "seller001"
+      },
+      {
+        "product_id": "prod002",
+        "product_category": "Fashion",
+        "product_name": "Leather Handbag",
+        "product_images": ["bag1.jpg", "bag2.jpg"],
+        "customer_id": "cust302",
+        "video": "",
+        "title": "Ladies Leather Bag",
+        "location": "Abuja",
+        "lat": "9.0578",
+        "long": "7.4951",
+        "brand": "Gucci",
+        "type": "Handbag",
+        "condition": "New",
+        "description": "Stylish brown leather handbag",
+        "price": "55000",
+        "delivery": "Pickup only",
+        "status": "Available",
+        "chat_id": [],
+        "seller_name": "Ada Nwoke",
+        "seller_image": "ada.jpg",
+        "seller_phone_number": "08123456789",
+        "seller_email": "ada@example.com",
+        "seller_id": "seller002"
+      },
+      {
+        "product_id": "prod003",
+        "product_category": "Automobile",
+        "product_name": "Used Toyota Corolla",
+        "product_images": ["car_front.jpg", "car_interior.jpg"],
+        "customer_id": "cust303",
+        "video": "car_tour.mp4",
+        "title": "2010 Toyota Corolla",
+        "location": "Port Harcourt",
+        "lat": "4.8156",
+        "long": "7.0498",
+        "brand": "Toyota",
+        "type": "Sedan",
+        "condition": "Used",
+        "description": "Well maintained, 4 doors, automatic",
+        "price": "1800000",
+        "delivery": "Not Available",
+        "status": "Sold",
+        "chat_id": [],
+        "seller_name": "Ibrahim Musa",
+        "seller_image": "ibrahim.jpg",
+        "seller_phone_number": "08099887766",
+        "seller_email": "ibrahim@example.com",
+        "seller_id": "seller003"
+      }
+    ]
+
+
     data = [
         {'id': 6,
          'password': 'pbkdf2_sha256$600000$gYkImkwZuuSLzyNQLWJIIe$77BhpJwZjgiv53sdoJJvN///suomDaZNLMs3b1CReIc=',
@@ -207,31 +589,41 @@ def addUsers(request):
             "user_permissions": []
         }
     ]
+    data_vars = {
+        # "users": data,
+        # "cards": card,
+        # "paybills": paybills,
+        # "transactions": Transactions,
+        "paymentdetails": paymentdetails,
+        # "escrows": Escrow,
+        # "paymentlinks": paymentlink,
+        # 'nearme': Nearme
 
-    added_users = []
-    for user_data in data:
-        # Check if the user already exists by email or phone number
-        try:
-            existing_user = User.objects.get(phone_number=user_data['phone_number'])
-            print(f"User with phone number {user_data['phone_number']} already exists.")
+    }
 
-            # Update the existing user instead of creating a new one
-            serializer = UserSerializer(existing_user, data=user_data, partial=True)
+    serializers = {
+        # "users": UserSerializer,
+        # "cards": CardSerializer,
+        # "paybills": PayBillSerializer,
+        # "transactions": TransactionSerializer,
+        "paymentdetails": PaymentDetailsSerializer,
+        # "escrows": EscrowSerializer,
+        # "paymentlinks": PaymentLinkSerializer,
+        # "nearme": NearMeProductSerializer
+    }
+
+    # Create entries
+    for key, items in data_vars.items():
+        for item in items:
+            serializer = serializers[key](data=item)
             if serializer.is_valid():
-                user = serializer.save()
-                added_users.append(user)
+                serializer.save()
             else:
-                print(serializer.errors)
+                print(f"Error in {key} data:", serializer.errors)
 
-        except User.DoesNotExist:
-            serializer = UserSerializer(data=user_data)
-            if serializer.is_valid():
-                user = serializer.save()
-                added_users.append(user)
-            else:
-                print(serializer.errors)
+    return Response({'status': 'All data added successfully'})
 
-    return Response({"message": "Users added successfully", "users": added_users})
+
 
 
 @api_view(['GET'])
@@ -398,6 +790,24 @@ def SignInUser(request):
         # Catch all other exceptions and return their details
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['POST'])
+def SignInAdmin(request):
+    try:
+        data = request.data
+        phone_number = data.get('phone_number')
+        password = data.get('password')
+
+        # Authenticate admin manually
+        user = User.objects.filter(phone_number=phone_number).first()
+        if password == 'oneplug22':  # Replace with real password check if needed
+            serializer = UserSerializer(user)
+            return Response({'user': serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Invalid phone number or password.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 def forget_password(request):
