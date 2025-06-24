@@ -95,8 +95,8 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://oneplug_database_y6d3_user:29ZlE5ObIwEMzARhWtrfkKnu'
-                'JRH7ssiM@dpg-d08cf695pdvs739m4vi0-a.oregon-postgres.render.com/oneplug_database_y6d3',
+        default='postgresql://oneplug_database_b4v5_user:wKUj89ixxZc571UhIPTKzJph8U8Jr7P2@dpg-'
+                'd1d7otje5dus73b39uug-a.oregon-postgres.render.com/oneplug_database_b4v5',
         conn_max_age=600,
         conn_health_checks=True,
     )
