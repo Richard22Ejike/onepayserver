@@ -590,26 +590,26 @@ def addUsers(request):
         }
     ]
     data_vars = {
-        # "users": data,
-        # "cards": card,
-        # "paybills": paybills,
-        # "transactions": Transactions,
-        "paymentdetails": paymentdetails,
-        # "escrows": Escrow,
-        # "paymentlinks": paymentlink,
-        # 'nearme': Nearme
+        "users": data,
+        "cards": card,
+        "paybills": paybills,
+        "transactions": Transactions,
+        # "paymentdetails": paymentdetails,
+        "escrows": Escrow,
+        "paymentlinks": paymentlink,
+        'nearme': Nearme
 
     }
 
     serializers = {
-        # "users": UserSerializer,
-        # "cards": CardSerializer,
-        # "paybills": PayBillSerializer,
-        # "transactions": TransactionSerializer,
-        "paymentdetails": PaymentDetailsSerializer,
-        # "escrows": EscrowSerializer,
-        # "paymentlinks": PaymentLinkSerializer,
-        # "nearme": NearMeProductSerializer
+        "users": UserSerializer,
+        "cards": CardSerializer,
+        "paybills": PayBillSerializer,
+        "transactions": TransactionSerializer,
+        # "paymentdetails": PaymentDetailsSerializer,
+        "escrows": EscrowSerializer,
+        "paymentlinks": PaymentLinkSerializer,
+        "nearme": NearMeProductSerializer
     }
 
     # Create entries
